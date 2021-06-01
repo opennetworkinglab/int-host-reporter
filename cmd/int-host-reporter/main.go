@@ -4,18 +4,20 @@
 package main
 
 import (
-	"fmt"
+	"flag"
 	"github.com/opennetworkinglab/int-host-reporter/pkg/inthostreporter"
 	log "github.com/sirupsen/logrus"
 )
 
 
 func main() {
-	fmt.Println("hello")
+	flag.Parse()
 	log.SetLevel(log.DebugLevel)
-	log.Debug("hello")
+	// TODO (tomasz): print startup configuration
+	log.Debug("Starting INT Host Reporter.")
 
 	intReporter := inthostreporter.NewIntHostReporter()
+
 	// Blocking
 	err := intReporter.Start()
 	if err != nil {

@@ -18,6 +18,10 @@ func NewDataPlaneInterface() *dataPlaneInterface {
 	return &dataPlaneInterface{}
 }
 
+func (d *dataPlaneInterface) SetEventChannel(ch chan dataPlaneEvent) {
+	d.eventsChannel = ch
+}
+
 func (d *dataPlaneInterface) Start(stopCtx context.Context) error {
 	path := DefaultMapRoot + "/" + DefaultMapPrefix + "/" + CalicoPerfEventArray
 	eventsMap, err := ebpf.LoadPinnedMap(path, nil)
@@ -37,7 +41,7 @@ func (d *dataPlaneInterface) Start(stopCtx context.Context) error {
 		d.dataPlaneReader = nil
 	}()
 	d.dataPlaneReader = events
-	log.Debug("Starting to read perf events..")
+	log.Infof("Listening for perf events from %s", d.perfEventArray.String())
 	// TODO (tomasz): break loop with cancel ctx
 	for {
 		record, err := events.Read()
@@ -56,8 +60,8 @@ func (d *dataPlaneInterface) processPerfRecord(record perf.Record) {
 	log.WithFields(log.Fields{
 		"CPU": record.CPU,
 		"HasLostSamples": record.LostSamples > 0,
-		"Data": record.RawSample,
-	}).Debug("perf event read")
+		"DataSize": len(record.RawSample),
+	}).Trace("perf event read")
 
 	if record.LostSamples > 0 {
 		log.WithFields(log.Fields{
