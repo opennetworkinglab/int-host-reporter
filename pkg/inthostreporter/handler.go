@@ -1,7 +1,9 @@
 package inthostreporter
 
 import (
+	"encoding/binary"
 	"flag"
+	"fmt"
 	log "github.com/sirupsen/logrus"
 	"net"
 	"strconv"
@@ -10,7 +12,7 @@ import (
 const (
 	// TODO (tomasz): make it configurable
 	rxChannelSize = 100
-	rxWorkers     = 1
+	rxWorkers     = 2
 
 	// DummyHopLatency
 	// FIXME: PoC-only: we use DummyHopLatency to provide dummy hop latency for the INT collector.
@@ -19,9 +21,9 @@ const (
 )
 
 var (
-	intCollectorServer = flag.String("collector", "", "Address (IP:Port) of the INT collector server.")
+	INTCollectorServer = flag.String("collector", "", "Address (IP:Port) of the INT collector server.")
 	// FIXME: we provide Switch ID as a command line argument for now; it should be probably configured via ConfigMap.
-	intSwitchID = flag.String("switch-id", "", "Switch ID used by INT Host Reporter to identify the end host")
+	INTSwitchID = flag.String("switch-id", "", "Switch ID used by INT Host Reporter to identify the end host")
 )
 
 type ReportHandler struct {
@@ -41,19 +43,35 @@ func NewReportHandler(dpi *dataPlaneInterface) *ReportHandler {
 	return rh
 }
 
+func getSwitchID() (uint32, error) {
+	swID, err := strconv.ParseUint(*INTSwitchID, 10, 32)
+	if err == nil {
+		return uint32(swID), nil
+	}
+
+	// try IP format
+	ip := net.ParseIP(*INTSwitchID).To4()
+	if ip != nil {
+		return binary.LittleEndian.Uint32(ip), nil
+	}
+
+	return 0, fmt.Errorf("unsupported format of switch ID")
+}
+
 func (rh *ReportHandler) Start() error {
 	// TODO: use github.com/jessevdk/go-flags to configure mandatory flags.
-	if *intCollectorServer == "" || *intSwitchID == "" {
+	if *INTCollectorServer == "" || *INTSwitchID == "" {
 		log.Fatal("The required flags are not provided")
 	}
 
-	switchID, err := strconv.ParseUint(*intSwitchID, 10, 32)
+	switchID, err := getSwitchID()
 	if err != nil {
-		log.Fatal("The 'switch-id' parameter has incorrect format. Use unsigned integer.")
+		log.Fatalf("Failed to start: %v", err)
 	}
-	rh.switchID = uint32(switchID)
+	rh.switchID = switchID
+	log.Debugf("INT Host Reporter will use switch ID = %v", rh.switchID)
 
-	remoteAddr, err := net.ResolveUDPAddr("udp", *intCollectorServer)
+	remoteAddr, err := net.ResolveUDPAddr("udp", *INTCollectorServer)
 	if err != nil {
 		return err
 	}

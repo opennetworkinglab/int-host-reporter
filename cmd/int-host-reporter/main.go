@@ -13,8 +13,10 @@ import (
 func main() {
 	flag.Parse()
 	log.SetLevel(log.DebugLevel)
-	// TODO (tomasz): print startup configuration
-	log.Debug("Starting INT Host Reporter.")
+	log.WithFields(log.Fields{
+		"collector": *inthostreporter.INTCollectorServer,
+		"switchID": *inthostreporter.INTSwitchID,
+	}).Debug("Starting INT Host Reporter.")
 
 	intReporter := inthostreporter.NewIntHostReporter()
 
