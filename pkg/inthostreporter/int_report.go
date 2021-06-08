@@ -2,33 +2,35 @@ package inthostreporter
 
 import (
 	"encoding/binary"
+	"fmt"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
-	NProtoEthernet = 0
-	NProtoTelemetryDrop = 1
+	NProtoEthernet             = 0
+	NProtoTelemetryDrop        = 1
 	NProtoTelemetrySwitchLocal = 2
 
-	SizeINTFixedHeader = 12
+	SizeINTFixedHeader      = 12
 	SizeINTDropReportHeader = 12
 	SizeINTFlowReportHeader = 16
 )
 
 var (
 	LayerTypeINTReportFixedHeader = gopacket.RegisterLayerType(1001, gopacket.LayerTypeMetadata{
-		Name:    "INTReportFixedHeader",
+		Name: "INTReportFixedHeader",
 		// we won't be decoding INT Report Fixed Header as we only send reports.
 		Decoder: gopacket.DecodeUnknown,
 	})
 	LayerTypeINTFlowReportHeader = gopacket.RegisterLayerType(1002, gopacket.LayerTypeMetadata{
-		Name:    "INTFlowReport",
+		Name: "INTFlowReport",
 		// we won't be decoding INT Flow Report as we only send reports.
 		Decoder: gopacket.DecodeUnknown,
 	})
 	LayerTypeINTDropReportHeader = gopacket.RegisterLayerType(1003, gopacket.LayerTypeMetadata{
-		Name:    "INTDropReport",
+		Name: "INTDropReport",
 		// we won't be decoding INT Drop Report as we only send reports.
 		Decoder: gopacket.DecodeUnknown,
 	})
@@ -36,40 +38,45 @@ var (
 
 type INTReportFixedHeader struct {
 	layers.BaseLayer
-	Version 			uint8
-	NProto 				uint8
+	Version uint8
+	NProto  uint8
 	// 1-bit field
-	Dropped				bool
+	Dropped bool
 	// 1-bit field
 	CongestedQueueAssociation bool
 	// 1-bit field
 	TrackedFlowAssociation bool
 	// 6-bit field
-	HwID				uint8
-	SeqNo				uint32
-	IngressTimestamp	uint32
+	HwID             uint8
+	SeqNo            uint32
+	IngressTimestamp uint32
 }
 
 type INTCommonReportHeader struct {
 	layers.BaseLayer
-	SwitchID			uint32
-	IngressPort			uint16
-	EgressPort			uint16
-	QueueID				uint8
+	SwitchID    uint32
+	IngressPort uint16
+	EgressPort  uint16
+	QueueID     uint8
 }
 
 type INTDropReportHeader struct {
 	layers.BaseLayer
 	INTCommonReportHeader
-	DropReason			uint8
+	DropReason uint8
 }
 
 type INTLocalReportHeader struct {
 	layers.BaseLayer
 	INTCommonReportHeader
 	// 24-bit field
-	QueueOccupancy		uint32
-	EgressTimestamp		uint32
+	QueueOccupancy  uint32
+	EgressTimestamp uint32
+}
+
+func (f INTReportFixedHeader) String() string {
+	return fmt.Sprintf("NProto=%v, HwID=%v, SeqNo=%v, IngressTimestamp=%v",
+		f.NProto, f.HwID, f.SeqNo, f.IngressTimestamp)
 }
 
 func (f INTReportFixedHeader) LayerType() gopacket.LayerType {
@@ -101,6 +108,11 @@ func (f INTReportFixedHeader) SerializeTo(b gopacket.SerializeBuffer, opts gopac
 	return nil
 }
 
+func (l INTLocalReportHeader) String() string {
+	return fmt.Sprintf("SwitchID=%v, IngressPort=%v, EgressPort=%v, EgressTimestamp=%v",
+		l.SwitchID, l.IngressPort, l.EgressPort, l.EgressTimestamp)
+}
+
 func (l INTLocalReportHeader) LayerType() gopacket.LayerType {
 	return LayerTypeINTFlowReportHeader
 }
@@ -124,3 +136,61 @@ func (l INTLocalReportHeader) SerializeTo(b gopacket.SerializeBuffer, opts gopac
 	return nil
 }
 
+func buildINTFlowReport(pktMd *PacketMetadata, switchID uint32) ([]byte, error) {
+	fixedReport := INTReportFixedHeader{
+		Version:                   0,
+		NProto:                    NProtoTelemetrySwitchLocal,
+		Dropped:                   false,
+		CongestedQueueAssociation: false,
+		TrackedFlowAssociation:    true,
+		HwID:                      99, // FIXME: dummy value
+		SeqNo:                     0,  // FIXME: calculate sequence number
+		IngressTimestamp:          uint32(pktMd.DataPlaneReport.IngressTimestamp),
+	}
+
+	commonHeader := INTCommonReportHeader{
+		SwitchID:    switchID,
+		IngressPort: uint16(pktMd.DataPlaneReport.IngressPort),
+		EgressPort:  uint16(pktMd.DataPlaneReport.EgressPort),
+		QueueID:     0,
+	}
+
+	localReport := INTLocalReportHeader{
+		INTCommonReportHeader: commonHeader,
+		QueueOccupancy:        0,
+		EgressTimestamp:       uint32(pktMd.DataPlaneReport.IngressTimestamp) + DummyHopLatency,
+	}
+	payload := gopacket.Payload(pktMd.DataPlaneReport.LayerPayload())
+
+	log.WithFields(log.Fields{
+		"fixed-report": fixedReport,
+		"flow-report": localReport,
+		"payload":     payload,
+	}).Debug("INT Flow Report built")
+
+	buf := gopacket.NewSerializeBuffer()
+	opts := gopacket.SerializeOptions{}
+
+	err := gopacket.SerializeLayers(buf, opts,
+		&fixedReport,
+		&localReport,
+		payload)
+	if err != nil {
+		return []byte{}, fmt.Errorf("failed to serialize INT Flow Report: %v", err)
+	}
+
+	return buf.Bytes(), nil
+}
+
+func buildINTReport(pktMd *PacketMetadata, switchID uint32) (data []byte, err error) {
+	switch pktMd.DataPlaneReport.Type {
+	case TraceReport:
+		data, err = buildINTFlowReport(pktMd, switchID)
+	// TODO: handle drop reports
+	//  case DropReport:
+	default:
+		return []byte{}, fmt.Errorf("unknown report type")
+	}
+
+	return data, err
+}

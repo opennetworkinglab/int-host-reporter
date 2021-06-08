@@ -2,9 +2,6 @@ package inthostreporter
 
 import (
 	"flag"
-	"fmt"
-	"github.com/google/gopacket"
-
 	log "github.com/sirupsen/logrus"
 	"net"
 	"strconv"
@@ -89,7 +86,7 @@ func (rh *ReportHandler) rxFn(id int) {
 			"Encapsulation":   pktMd.EncapMode,
 		}).Debugf("RX worker %d parsed data plane event.", id)
 
-		data, err := rh.buildINTReport(pktMd)
+		data, err := buildINTReport(pktMd, rh.switchID)
 		if err != nil {
 			log.Errorf("failed to build INT report: %v", err)
 			continue
@@ -102,63 +99,4 @@ func (rh *ReportHandler) rxFn(id int) {
 		}
 		log.Tracef("RX worker %d sent %d bytes to %v", id, n, rh.udpConn.RemoteAddr())
 	}
-}
-
-// TODO: we should probably move it to a separate file
-func (rh *ReportHandler) buildINTFlowReport(pktMd *PacketMetadata) ([]byte, error) {
-	fixedReport := INTReportFixedHeader{
-		Version:                   0,
-		NProto:                    NProtoTelemetrySwitchLocal,
-		Dropped:                   false,
-		CongestedQueueAssociation: false,
-		TrackedFlowAssociation:    true,
-		HwID:                      99, // FIXME: dummy value
-		SeqNo:                     0,  // FIXME: calculate sequence number
-		IngressTimestamp:          uint32(pktMd.DataPlaneReport.IngressTimestamp),
-	}
-
-	commonHeader := INTCommonReportHeader{
-		SwitchID:    rh.switchID,
-		IngressPort: uint16(pktMd.DataPlaneReport.IngressPort),
-		EgressPort:  uint16(pktMd.DataPlaneReport.EgressPort),
-		QueueID:     0,
-	}
-
-	localReport := INTLocalReportHeader{
-		INTCommonReportHeader: commonHeader,
-		QueueOccupancy:        0,
-		EgressTimestamp:       uint32(pktMd.DataPlaneReport.IngressTimestamp) + DummyHopLatency,
-	}
-	payload := gopacket.Payload(pktMd.DataPlaneReport.LayerPayload())
-
-	log.WithFields(log.Fields{
-		"flow-report": localReport,
-		"payload":     payload,
-	}).Debug("INT Flow Report built")
-
-	buf := gopacket.NewSerializeBuffer()
-	opts := gopacket.SerializeOptions{}
-
-	err := gopacket.SerializeLayers(buf, opts,
-		&fixedReport,
-		&localReport,
-		payload)
-	if err != nil {
-		return []byte{}, fmt.Errorf("failed to serialize INT Flow Report: %v", err)
-	}
-
-	return buf.Bytes(), nil
-}
-
-func (rh *ReportHandler) buildINTReport(pktMd *PacketMetadata) (data []byte, err error) {
-	switch pktMd.DataPlaneReport.Type {
-	case TraceReport:
-		data, err = rh.buildINTFlowReport(pktMd)
-	// TODO: handle drop reports
-	//  case DropReport:
-	default:
-		return []byte{}, fmt.Errorf("unknown report type")
-	}
-
-	return data, err
 }
