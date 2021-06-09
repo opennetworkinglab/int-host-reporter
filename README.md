@@ -1,6 +1,14 @@
 # INT Host Reporter
 
+`INT Host Reporter` is a Go application implementing the support for the In-Band Network Telemetry on the end hosts running Kubernetes.
+
+`INT Host Reporter` leverages the modified Calico CNI and its eBPF dataplane as a network backend generating data plane reports.
+
 ## Deployment guide
+
+### Install the ONF flavor of Calico CNI
+
+TODO
 
 ### Create K8s secret 
 
@@ -32,7 +40,26 @@ type: kubernetes.io/dockerconfigjson
 
 ### Deploy INT Host Reporter
 
+`$ kubectl apply -f deployment/kubernetes/inthostreporter.yaml`
 
+Verify that the `inthostreporter` is in the Running state on each node:
+
+```bash
+$ kubectl get pods --all-namespaces -o wide
+NAMESPACE     NAME                                       READY   STATUS    RESTARTS   AGE     IP              NODE         NOMINATED NODE   READINESS GATES
+kube-system   int-host-reporter-jpdl2                    1/1     Running   0          9m11s   10.79.233.238   worker2      <none>           <none>
+kube-system   int-host-reporter-ljwvs                    1/1     Running   0          9m11s   10.68.235.172   worker1      <none>           <none>
+kube-system   int-host-reporter-x48ps                    1/1     Running   0          9m11s   10.67.219.106   kubemaster   <none>           <none>
+```
+
+## Conclusions from PoC
+
+- consider adding a `flow-id` field to the INT report to correlate pre-/post-NAT flows. Although the Calico datapath provides 
+  `PreNATDestinationIP` and `PreNATDestinationPort` restoring an original flow may cause that we loose information about a given Pod.
+  For example, there is a problem with a specific Pod, but the INT collector will see a report related to the K8s Service - 
+  given the fact that we can have many (!) Pods under a single K8s Service it may cause troubleshooting really difficult.
+  The ideal situation would be that we provide an original packet (pre- or post-NAT'ed, depending on the trace point) plus 
+  the `flow-id`, so the INT collector can easily correlate packets. 
 
 ## TODOs 
 
