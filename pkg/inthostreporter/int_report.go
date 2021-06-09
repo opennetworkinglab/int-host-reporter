@@ -16,6 +16,11 @@ const (
 	SizeINTFixedHeader      = 12
 	SizeINTDropReportHeader = 12
 	SizeINTFlowReportHeader = 16
+
+	OffsetDestinationIPVXLAN = 80
+	OffsetDestinationPortVXLAN = 86
+	OffsetDestinationIPNoEncap = 30
+	OffsetDestinationPortNoEncap = 36
 )
 
 var (
@@ -161,6 +166,23 @@ func buildINTFlowReport(pktMd *PacketMetadata, switchID uint32) ([]byte, error) 
 		EgressTimestamp:       uint32(pktMd.DataPlaneReport.IngressTimestamp) + DummyHopLatency,
 	}
 	payload := gopacket.Payload(pktMd.DataPlaneReport.LayerPayload())
+
+	if !pktMd.DataPlaneReport.PreNATDestinationIP.IsUnspecified() && pktMd.DataPlaneReport.PreNATDestinationPort != 0 {
+		// if a data plane provides pre-NAT IP and port we should restore an original IP and port
+		ipDstAddrOffset := 0
+		tcpDstPortOffset := 0
+		if pktMd.EncapMode == "vxlan" {
+			ipDstAddrOffset = OffsetDestinationIPVXLAN
+			tcpDstPortOffset = OffsetDestinationPortVXLAN
+		} else if pktMd.EncapMode == "none" {
+			ipDstAddrOffset = OffsetDestinationIPNoEncap
+			tcpDstPortOffset = OffsetDestinationPortNoEncap
+		}
+		copy(payload[ipDstAddrOffset:ipDstAddrOffset+4], pktMd.DataPlaneReport.PreNATDestinationIP)
+		b := make([]byte, 2)
+		binary.BigEndian.PutUint16(b, pktMd.DataPlaneReport.PreNATDestinationPort)
+		copy(payload[tcpDstPortOffset:tcpDstPortOffset+2], b)
+	}
 
 	log.WithFields(log.Fields{
 		"fixed-report": fixedReport,
