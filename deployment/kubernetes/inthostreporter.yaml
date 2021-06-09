@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: int-host-reporter
+  namespace: kube-system
+  labels:
+    k8s-app: int-host-reporter
+spec:
+  selector:
+    matchLabels:
+      name: int-host-reporter
+  template:
+    metadata:
+      labels:
+        name: int-host-reporter
+    spec:
+      nodeSelector:
+        kubernetes.io/os: linux
+      tolerations:
+        # Make sure container gets scheduled on all nodes.
+        - effect: NoSchedule
+          operator: Exists
+      imagePullSecrets:
+        - name: aetherregistrysecret
+      containers:
+        - name: int-host-reporter
+          image: registry.aetherproject.org/tost/int-host-reporter
+          env:
+            - name: COLLECTOR
+              value: "192.168.99.50:30001"
+            # we use Node IP as switch ID
+            - name: NODE_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+          command: ["int-host-reporter"]
+          args: ["--collector", "$(COLLECTOR)", "--switch-id", "$(NODE_IP)"]
+          volumeMounts:
+            - name: bpffs
+              mountPath: /sys/fs/bpf
+          securityContext:
+            privileged: true
+      volumes:
+        - name: bpffs
+          hostPath:
+            path: /sys/fs/bpf
