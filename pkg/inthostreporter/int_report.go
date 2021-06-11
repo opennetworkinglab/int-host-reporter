@@ -16,6 +16,9 @@ const (
 	SizeINTFixedHeader      = 12
 	SizeINTDropReportHeader = 12
 	SizeINTFlowReportHeader = 16
+	// SizeEthernetIPv4UDPVXLAN specifies the total length of Ethernet, IPv4, UDP and VXLAN headers.
+	// Used to strip out the outer headers.
+	SizeEthernetIPv4UDPVXLAN = 50
 
 	OffsetDestinationIPVXLAN = 80
 	OffsetDestinationPortVXLAN = 86
@@ -167,21 +170,17 @@ func buildINTFlowReport(pktMd *PacketMetadata, switchID uint32, hwID uint8, seqN
 	}
 	payload := gopacket.Payload(pktMd.DataPlaneReport.LayerPayload())
 
+	if pktMd.EncapMode == "vxlan" {
+		// strip VXLAN out - our design choice is to report only the inner headers
+		payload = payload[SizeEthernetIPv4UDPVXLAN:]
+	}
+
 	if !pktMd.DataPlaneReport.PreNATDestinationIP.IsUnspecified() && pktMd.DataPlaneReport.PreNATDestinationPort != 0 {
 		// if a data plane provides pre-NAT IP and port we should restore an original IP and port
-		ipDstAddrOffset := 0
-		tcpDstPortOffset := 0
-		if pktMd.EncapMode == "vxlan" {
-			ipDstAddrOffset = OffsetDestinationIPVXLAN
-			tcpDstPortOffset = OffsetDestinationPortVXLAN
-		} else if pktMd.EncapMode == "none" {
-			ipDstAddrOffset = OffsetDestinationIPNoEncap
-			tcpDstPortOffset = OffsetDestinationPortNoEncap
-		}
-		copy(payload[ipDstAddrOffset:ipDstAddrOffset+4], pktMd.DataPlaneReport.PreNATDestinationIP)
+		copy(payload[OffsetDestinationIPNoEncap:OffsetDestinationIPNoEncap+4], pktMd.DataPlaneReport.PreNATDestinationIP)
 		b := make([]byte, 2)
 		binary.BigEndian.PutUint16(b, pktMd.DataPlaneReport.PreNATDestinationPort)
-		copy(payload[tcpDstPortOffset:tcpDstPortOffset+2], b)
+		copy(payload[OffsetDestinationPortNoEncap:OffsetDestinationPortNoEncap+2], b)
 	}
 
 	log.WithFields(log.Fields{
