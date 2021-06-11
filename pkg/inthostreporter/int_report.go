@@ -141,15 +141,15 @@ func (l INTLocalReportHeader) SerializeTo(b gopacket.SerializeBuffer, opts gopac
 	return nil
 }
 
-func buildINTFlowReport(pktMd *PacketMetadata, switchID uint32) ([]byte, error) {
+func buildINTFlowReport(pktMd *PacketMetadata, switchID uint32, hwID uint8, seqNo uint32) ([]byte, error) {
 	fixedReport := INTReportFixedHeader{
 		Version:                   0,
 		NProto:                    NProtoTelemetrySwitchLocal,
 		Dropped:                   false,
 		CongestedQueueAssociation: false,
 		TrackedFlowAssociation:    true,
-		HwID:                      99, // FIXME: dummy value
-		SeqNo:                     0,  // FIXME: calculate sequence number
+		HwID:                      hwID,
+		SeqNo:                     seqNo,
 		IngressTimestamp:          uint32(pktMd.DataPlaneReport.IngressTimestamp),
 	}
 
@@ -204,10 +204,10 @@ func buildINTFlowReport(pktMd *PacketMetadata, switchID uint32) ([]byte, error) 
 	return buf.Bytes(), nil
 }
 
-func buildINTReport(pktMd *PacketMetadata, switchID uint32) (data []byte, err error) {
+func buildINTReport(pktMd *PacketMetadata, switchID uint32, hwID uint8, seqNo uint32) (data []byte, err error) {
 	switch pktMd.DataPlaneReport.Type {
 	case TraceReport:
-		data, err = buildINTFlowReport(pktMd, switchID)
+		data, err = buildINTFlowReport(pktMd, switchID, hwID, seqNo)
 	// TODO: handle drop reports
 	//  case DropReport:
 	default:

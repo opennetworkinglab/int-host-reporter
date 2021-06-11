@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	log "github.com/sirupsen/logrus"
+	"math"
 	"net"
 	"strconv"
 )
@@ -92,6 +93,8 @@ func (rh *ReportHandler) Start() error {
 }
 
 func (rh *ReportHandler) rxFn(id int) {
+	hwID := uint8(id)
+	seqNo := uint32(0)
 	for event := range rh.reportsChannel {
 		pktMd := event.Parse()
 		log.WithFields(log.Fields{
@@ -104,7 +107,13 @@ func (rh *ReportHandler) rxFn(id int) {
 			"Encapsulation":   pktMd.EncapMode,
 		}).Debugf("RX worker %d parsed data plane event.", id)
 
-		data, err := buildINTReport(pktMd, rh.switchID)
+		if seqNo >= math.MaxUint32 {
+			seqNo = 0
+		} else {
+			seqNo++
+		}
+
+		data, err := buildINTReport(pktMd, rh.switchID, hwID, seqNo)
 		if err != nil {
 			log.Errorf("failed to build INT report: %v", err)
 			continue
