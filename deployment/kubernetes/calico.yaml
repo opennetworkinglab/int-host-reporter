@@ -3524,6 +3524,8 @@ spec:
     spec:
       nodeSelector:
         kubernetes.io/os: linux
+      imagePullSecrets:
+        - name: aetherregistrysecret
       hostNetwork: true
       tolerations:
         # Make sure calico-node gets scheduled on all nodes.
