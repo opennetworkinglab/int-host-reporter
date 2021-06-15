@@ -18,7 +18,7 @@ const (
 	// DummyHopLatency
 	// FIXME: PoC-only: we use DummyHopLatency to provide dummy hop latency for the INT collector.
 	//  EgressTimestamp should be used to calculate hop latency.
-	DummyHopLatency = 10000
+	DummyHopLatency = 5000
 )
 
 var (
