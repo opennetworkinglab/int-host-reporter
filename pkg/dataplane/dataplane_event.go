@@ -1,4 +1,4 @@
-package inthostreporter
+package dataplane
 
 import (
 	"encoding/binary"
@@ -32,7 +32,7 @@ var (
 	})
 )
 
-type dataPlaneEvent struct {
+type Event struct {
 	Data []byte
 	CPU  int
 }
@@ -42,6 +42,7 @@ type dataPlaneEvent struct {
 // This struct must be kept in sync with 'struct dp_event` from bpf-gpl/fib.h (calico-felix).
 type DataPlaneReport struct {
 	layers.BaseLayer
+	NewFlow               bool
 	Type                  DataPlaneReportType
 	Reason                uint8
 	PreNATDestinationIP   net.IP
@@ -53,14 +54,14 @@ type DataPlaneReport struct {
 }
 
 func (dpr *DataPlaneReport) String() string {
-	return fmt.Sprintf("DataPlaneReport(type=%d, reason=%d, "+
+	return fmt.Sprintf("DataPlaneReport(isNew? %v,type=%d, reason=%d, "+
 		"PreNATDestinationIP=%s, "+
 		"PreNATDestinationPort=%d, "+
 		"IngressPort=%d, "+
 		"EgressPort=%d, "+
 		"IngressTimestamp=%v, "+
 		"EgressTimeStamp=%v)",
-		dpr.Type, dpr.Reason, dpr.PreNATDestinationIP.String(),
+		dpr.NewFlow, dpr.Type, dpr.Reason, dpr.PreNATDestinationIP.String(),
 		dpr.PreNATDestinationPort, dpr.IngressPort, dpr.EgressPort,
 		dpr.IngressTimestamp, dpr.EgressTimestamp)
 }
@@ -83,10 +84,12 @@ func (dpr *DataPlaneReport) DecodeFromBytes(data []byte, p gopacket.PacketBuilde
 		return fmt.Errorf("invalid data plane report. Length %d less than %d",
 			len(data), DataPlaneReportSize)
 	}
-	// Skip
-	dpr.Type = DataPlaneReportType(data[0])
-	dpr.Reason = uint8(data[1])
-	// 2 bytes of padding
+	if uint8(data[0]) == 1 {
+		dpr.NewFlow = true
+	}
+	dpr.Type = DataPlaneReportType(data[1])
+	dpr.Reason = uint8(data[2])
+	// 1 byte of padding
 	ipv4 := binary.LittleEndian.Uint32(data[4:8])
 	dpr.PreNATDestinationIP = make(net.IP, 4)
 	binary.BigEndian.PutUint32(dpr.PreNATDestinationIP, ipv4)
@@ -133,7 +136,7 @@ type PacketMetadata struct {
 	IPLayer			*layers.IPv4
 }
 
-func (dpe dataPlaneEvent) Parse() *PacketMetadata {
+func (dpe Event) Parse() *PacketMetadata {
 	pktMd := &PacketMetadata{
 		EncapMode: "none",
 	}

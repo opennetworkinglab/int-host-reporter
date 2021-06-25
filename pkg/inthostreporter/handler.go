@@ -4,6 +4,9 @@ import (
 	"encoding/binary"
 	"flag"
 	"fmt"
+	"github.com/opennetworkinglab/int-host-reporter/pkg/dataplane"
+	"github.com/opennetworkinglab/int-host-reporter/pkg/packet"
+	"github.com/opennetworkinglab/int-host-reporter/pkg/watchlist"
 	log "github.com/sirupsen/logrus"
 	"math"
 	"net"
@@ -14,11 +17,6 @@ const (
 	// TODO (tomasz): make it configurable
 	rxChannelSize = 100
 	rxWorkers     = 2
-
-	// DummyHopLatency
-	// FIXME: PoC-only: we use DummyHopLatency to provide dummy hop latency for the INT collector.
-	//  EgressTimestamp should be used to calculate hop latency.
-	DummyHopLatency = 5000
 )
 
 var (
@@ -33,14 +31,17 @@ type ReportHandler struct {
 	// thread-safe
 	udpConn *net.UDPConn
 
-	reportsChannel     chan dataPlaneEvent
-	dataPlaneInterface *dataPlaneInterface
+	watchlist          *watchlist.INTWatchlist
+
+	reportsChannel     chan dataplane.Event
+	dataPlaneInterface *dataplane.DataPlaneInterface
 }
 
-func NewReportHandler(dpi *dataPlaneInterface) *ReportHandler {
+func NewReportHandler(dpi *dataplane.DataPlaneInterface, watchlist *watchlist.INTWatchlist) *ReportHandler {
 	rh := &ReportHandler{}
 	rh.dataPlaneInterface = dpi
-	rh.reportsChannel = make(chan dataPlaneEvent, rxChannelSize)
+	rh.reportsChannel = make(chan dataplane.Event, rxChannelSize)
+	rh.watchlist = watchlist
 	return rh
 }
 
@@ -107,13 +108,21 @@ func (rh *ReportHandler) rxFn(id int) {
 			"Encapsulation":   pktMd.EncapMode,
 		}).Debugf("RX worker %d parsed data plane event.", id)
 
+		if shouldReport := rh.watchlist.Classify(pktMd); !shouldReport {
+			log.Debugf("INT watchlist miss for event")
+			continue
+		}
+
+		// we should report this packet, if it is a new packet; update flow cache
+
+
 		if seqNo >= math.MaxUint32 {
 			seqNo = 0
 		} else {
 			seqNo++
 		}
 
-		data, err := buildINTReport(pktMd, rh.switchID, hwID, seqNo)
+		data, err := packet.BuildINTReport(pktMd, rh.switchID, hwID, seqNo)
 		if err != nil {
 			log.Errorf("failed to build INT report: %v", err)
 			continue

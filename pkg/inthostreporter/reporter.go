@@ -2,6 +2,8 @@ package inthostreporter
 
 import (
 	"context"
+	"github.com/opennetworkinglab/int-host-reporter/pkg/dataplane"
+	"github.com/opennetworkinglab/int-host-reporter/pkg/watchlist"
 )
 
 type IntHostReporter struct {
@@ -9,14 +11,15 @@ type IntHostReporter struct {
 	perfReaderCancel context.CancelFunc
 
 	reportHandler      *ReportHandler
-	dataPlaneInterface *dataPlaneInterface
+	dataPlaneInterface *dataplane.DataPlaneInterface
 }
 
 func NewIntHostReporter() *IntHostReporter {
 	itr := &IntHostReporter{}
 	itr.ctx = context.Background()
-	itr.dataPlaneInterface = NewDataPlaneInterface()
-	itr.reportHandler = NewReportHandler(itr.dataPlaneInterface)
+	itr.dataPlaneInterface = dataplane.NewDataPlaneInterface()
+	intWatchlist := watchlist.NewINTWatchlist()
+	itr.reportHandler = NewReportHandler(itr.dataPlaneInterface, intWatchlist)
 	return itr
 }
 

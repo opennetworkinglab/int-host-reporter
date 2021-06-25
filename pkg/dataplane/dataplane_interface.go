@@ -1,29 +1,30 @@
-package inthostreporter
+package dataplane
 
 import (
 	"context"
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/perf"
+	"github.com/opennetworkinglab/int-host-reporter/pkg/common"
 	log "github.com/sirupsen/logrus"
 )
 
-type dataPlaneInterface struct {
-	eventsChannel   chan dataPlaneEvent
+type DataPlaneInterface struct {
+	eventsChannel   chan Event
 
 	perfEventArray  *ebpf.Map
 	dataPlaneReader *perf.Reader
 }
 
-func NewDataPlaneInterface() *dataPlaneInterface {
-	return &dataPlaneInterface{}
+func NewDataPlaneInterface() *DataPlaneInterface {
+	return &DataPlaneInterface{}
 }
 
-func (d *dataPlaneInterface) SetEventChannel(ch chan dataPlaneEvent) {
+func (d *DataPlaneInterface) SetEventChannel(ch chan Event) {
 	d.eventsChannel = ch
 }
 
-func (d *dataPlaneInterface) Start(stopCtx context.Context) error {
-	path := DefaultMapRoot + "/" + DefaultMapPrefix + "/" + CalicoPerfEventArray
+func (d *DataPlaneInterface) Start(stopCtx context.Context) error {
+	path := common.DefaultMapRoot + "/" + common.DefaultMapPrefix + "/" + common.CalicoPerfEventArray
 	eventsMap, err := ebpf.LoadPinnedMap(path, nil)
 	if err != nil {
 		return err
@@ -56,7 +57,11 @@ func (d *dataPlaneInterface) Start(stopCtx context.Context) error {
 	}
 }
 
-func (d *dataPlaneInterface) processPerfRecord(record perf.Record) {
+func (d *DataPlaneInterface) UpdateWatchlistCache(pktMd PacketMetadata) {
+	// TODO: implement
+}
+
+func (d *DataPlaneInterface) processPerfRecord(record perf.Record) {
 	log.WithFields(log.Fields{
 		"CPU": record.CPU,
 		"HasLostSamples": record.LostSamples > 0,
@@ -69,7 +74,7 @@ func (d *dataPlaneInterface) processPerfRecord(record perf.Record) {
 		}).Warn("Records has been lost because ring buffer is full, consider to increase size?")
 	}
 
-	event := dataPlaneEvent{
+	event := Event{
 		Data: record.RawSample,
 		CPU: record.CPU,
 	}
