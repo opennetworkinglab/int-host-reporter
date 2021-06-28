@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"github.com/opennetworkinglab/int-host-reporter/pkg/dataplane"
 	"github.com/opennetworkinglab/int-host-reporter/pkg/packet"
-	"github.com/opennetworkinglab/int-host-reporter/pkg/watchlist"
 	log "github.com/sirupsen/logrus"
 	"math"
 	"net"
@@ -31,17 +30,14 @@ type ReportHandler struct {
 	// thread-safe
 	udpConn *net.UDPConn
 
-	watchlist          *watchlist.INTWatchlist
-
 	reportsChannel     chan dataplane.Event
 	dataPlaneInterface *dataplane.DataPlaneInterface
 }
 
-func NewReportHandler(dpi *dataplane.DataPlaneInterface, watchlist *watchlist.INTWatchlist) *ReportHandler {
+func NewReportHandler(dpi *dataplane.DataPlaneInterface) *ReportHandler {
 	rh := &ReportHandler{}
 	rh.dataPlaneInterface = dpi
 	rh.reportsChannel = make(chan dataplane.Event, rxChannelSize)
-	rh.watchlist = watchlist
 	return rh
 }
 
@@ -60,31 +56,10 @@ func getSwitchID() (uint32, error) {
 	return 0, fmt.Errorf("unsupported format of switch ID")
 }
 
-func (rh *ReportHandler) initWatchlist() error {
-	for _, rule := range rh.watchlist.GetRules() {
-		err := rh.dataPlaneInterface.UpdateWatchlist(rule.GetProtocol(), rule.GetSrcAddr(), rule.GetDstAddr())
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func (rh *ReportHandler) Start() error {
 	// TODO: use github.com/jessevdk/go-flags to configure mandatory flags.
 	if *INTCollectorServer == "" || *INTSwitchID == "" {
 		log.Fatal("The required flags are not provided")
-	}
-
-	err := rh.initWatchlist()
-	if err != nil {
-		log.Fatalf("Failed to initialize the INT watchlist: %v", err)
-	}
-
-	if len(rh.watchlist.GetRules()) > 0 {
-		log.WithFields(log.Fields{
-			"rules": rh.watchlist.GetRules(),
-		}).Debug("Starting with the pre-configured INT watchlist")
 	}
 
 	switchID, err := getSwitchID()
