@@ -14,12 +14,11 @@ type IntHostReporter struct {
 	dataPlaneInterface *dataplane.DataPlaneInterface
 }
 
-func NewIntHostReporter() *IntHostReporter {
+func NewIntHostReporter(watchlist *watchlist.INTWatchlist) *IntHostReporter {
 	itr := &IntHostReporter{}
 	itr.ctx = context.Background()
 	itr.dataPlaneInterface = dataplane.NewDataPlaneInterface()
-	intWatchlist := watchlist.NewINTWatchlist()
-	itr.reportHandler = NewReportHandler(itr.dataPlaneInterface, intWatchlist)
+	itr.reportHandler = NewReportHandler(itr.dataPlaneInterface, watchlist)
 	return itr
 }
 

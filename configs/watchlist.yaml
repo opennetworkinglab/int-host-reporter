@@ -1,0 +1,7 @@
+rules:
+  - protocol: "UDP"
+    src-addr: "192.168.99.3/32"
+    dst-addr: "192.168.99.0/24"
+  - protocol: "TCP"
+    dst-addr: "192.168.99.0/24"
+    dst-port: "30000:33000"

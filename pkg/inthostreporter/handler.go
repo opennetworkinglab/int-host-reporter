@@ -89,7 +89,8 @@ func (rh *ReportHandler) Start() error {
 		log.Debugf("Starting RX worker %d listening for data plane events.", i)
 		go rh.rxFn(i)
 	}
-	log.Debug("All RX workers started.")
+	log.Debug("All RX workers started with the following INT watchlist.")
+	rh.watchlist.Dump()
 	return nil
 }
 
@@ -98,7 +99,7 @@ func (rh *ReportHandler) rxFn(id int) {
 	seqNo := uint32(0)
 	for event := range rh.reportsChannel {
 		pktMd := event.Parse()
-		log.WithFields(log.Fields{
+		fields := log.WithFields(log.Fields{
 			"DataPlaneReport": pktMd.DataPlaneReport,
 			"SrcAddr":         pktMd.SrcAddr,
 			"DstAddr":         pktMd.DstAddr,
@@ -106,10 +107,11 @@ func (rh *ReportHandler) rxFn(id int) {
 			"SrcPort":         pktMd.SrcPort,
 			"DstPort":         pktMd.DstPort,
 			"Encapsulation":   pktMd.EncapMode,
-		}).Debugf("RX worker %d parsed data plane event.", id)
+		})
+		fields.Debugf("RX worker %d parsed data plane event.", id)
 
 		if shouldReport := rh.watchlist.Classify(pktMd); !shouldReport {
-			log.Debugf("INT watchlist miss for event")
+			fields.Debugf("INT watchlist miss for event")
 			continue
 		}
 
@@ -124,15 +126,15 @@ func (rh *ReportHandler) rxFn(id int) {
 
 		data, err := packet.BuildINTReport(pktMd, rh.switchID, hwID, seqNo)
 		if err != nil {
-			log.Errorf("failed to build INT report: %v", err)
+			fields.Errorf("failed to build INT report: %v", err)
 			continue
 		}
 
 		n, err := rh.udpConn.Write(data)
 		if err != nil {
-			log.Errorf("failed to sent UDP packet: %v", err)
+			fields.Errorf("failed to sent UDP packet: %v", err)
 			continue
 		}
-		log.Tracef("RX worker %d sent %d bytes to %v", id, n, rh.udpConn.RemoteAddr())
+		fields.Tracef("RX worker %d sent %d bytes to %v", id, n, rh.udpConn.RemoteAddr())
 	}
 }
