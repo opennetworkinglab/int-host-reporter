@@ -37,10 +37,10 @@ func main() {
 		}
 	}
 
-	intReporter := inthostreporter.NewIntHostReporter(wlist)
+	intReporter := inthostreporter.NewIntHostReporter()
 
 	// Blocking
-	err := intReporter.Start()
+	err := intReporter.Start(wlist)
 	if err != nil {
 		log.Fatalf("Error while running INT Host Reporter: %v", err)
 	}
