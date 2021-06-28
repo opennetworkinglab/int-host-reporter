@@ -2,12 +2,9 @@ package watchlist
 
 import (
 	"fmt"
-	"github.com/opennetworkinglab/int-host-reporter/pkg/dataplane"
-	log "github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
 	"io/ioutil"
 	"net"
-	"strings"
 )
 
 type WatchlistRuleYAML struct {
@@ -23,16 +20,29 @@ type WatchlistYAML struct {
 }
 
 type INTWatchlistRule struct {
-	// matchFields contains a subset of 5-tuple fields we are matching on
-	matchFields map[string]interface{}
-
-	priority uint8
-	//protocol uint8
-	//srcAddr  net.IP
-	//dstAddr  net.IP
+	protocol uint8
+	srcAddr  net.IP
+	dstAddr  net.IP
 	// TODO: currently we don't match on L4 ports
 	//srcPort  uint16
 	//dstPort  uint16
+}
+
+func (rule INTWatchlistRule) String() string {
+	return fmt.Sprintf("rule=[protocol=%v, srcAddr=%v, dstAddr=%v]", rule.protocol,
+		rule.srcAddr, rule.dstAddr)
+}
+
+func (rule INTWatchlistRule) GetProtocol() uint8 {
+	return rule.protocol
+}
+
+func (rule INTWatchlistRule) GetSrcAddr() net.IP {
+	return rule.srcAddr
+}
+
+func (rule INTWatchlistRule) GetDstAddr() net.IP {
+	return rule.dstAddr
 }
 
 type INTWatchlist struct {
@@ -40,9 +50,7 @@ type INTWatchlist struct {
 }
 
 func NewINTWatchlistRule() INTWatchlistRule {
-	rule := INTWatchlistRule{}
-	rule.matchFields = make(map[string]interface{})
-	return rule
+	return INTWatchlistRule{}
 }
 
 func NewINTWatchlist() *INTWatchlist {
@@ -51,28 +59,26 @@ func NewINTWatchlist() *INTWatchlist {
 	return w
 }
 
-func ReadFromFile(filename string) (*INTWatchlist, error) {
-	w := NewINTWatchlist()
-
+func FillFromFile(w *INTWatchlist, filename string) error {
 	buf, err := ioutil.ReadFile(filename)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	watchlist := &WatchlistYAML{}
 	err = yaml.Unmarshal(buf, watchlist)
 	if err != nil {
-		return nil, fmt.Errorf("in file %q: %v", filename, err)
+		return fmt.Errorf("in file %q: %v", filename, err)
 	}
 
 	for _, r := range watchlist.Rules {
 		rule, err := parseINTWatchlistRule(r)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		w.InsertRule(rule)
 	}
-	return w, nil
+	return nil
 }
 
 func protocolTextToDecimal(proto string) (uint8, error) {
@@ -96,78 +102,30 @@ func parseINTWatchlistRule(rule WatchlistRuleYAML) (INTWatchlistRule, error) {
 	if err != nil {
 		return INTWatchlistRule{}, fmt.Errorf("failed to parse Protocol: %v", err)
 	}
-	r.matchFields["protocol"] = proto
+	r.protocol = proto
 	if rule.SrcAddr != "" {
-		_, ip, err := parseIPv4Addr(rule.SrcAddr)
-		if err != nil {
-			return INTWatchlistRule{}, fmt.Errorf("failed to parse SrcAddr: %v", err)
+		ip := net.ParseIP(rule.SrcAddr)
+		if ip == nil {
+			return INTWatchlistRule{}, fmt.Errorf("failed to parse SrcAddr")
 		}
-		r.matchFields["src-addr"] = ip
+		r.srcAddr = ip
 	}
 	if rule.DstAddr != "" {
-		_, ip, err := parseIPv4Addr(rule.DstAddr)
-		if err != nil {
-			return INTWatchlistRule{}, fmt.Errorf("failed to parse DstAddr: %v", err)
+		ip := net.ParseIP(rule.DstAddr)
+		if ip == nil {
+			return INTWatchlistRule{}, fmt.Errorf("failed to parse DstAddr")
 		}
-		r.matchFields["dst-addr"] = ip
+		r.dstAddr = ip
 	}
 
 	return r, nil
 }
 
-func parseL4Port(port string) ([]string, error) {
-	s := strings.Split(port, ":")
-	if len(s) != 2 {
-		return []string{}, fmt.Errorf("wrong format of port field")
-	}
-	return s, nil
-}
-
-func parseIPv4Addr(addr string) (net.IP, *net.IPNet, error) {
-	return net.ParseCIDR(addr)
-}
-
-func (w *INTWatchlist) Dump() {
-	for idx, rule := range w.rules {
-		log.Debugf("#%v: protocol=%v, srcAddr=%v, dstAddr=%v", idx, rule.matchFields["protocol"],
-			rule.matchFields["src-addr"], rule.matchFields["dst-addr"])
-	}
+func (w *INTWatchlist) GetRules() []INTWatchlistRule {
+	return w.rules
 }
 
 func (w *INTWatchlist) InsertRule(rule INTWatchlistRule) {
 	// TODO: potential data race if we will enable runtime changes to the watchlist
 	w.rules = append(w.rules, rule)
-}
-
-func (w *INTWatchlist) Classify(pktMd *dataplane.PacketMetadata) bool {
-	// we use very naive approach (linear search); should be optimized in future
-	for idx, rule := range w.rules {
-		// "protocol" should always exist in match fields map
-		if rule.matchFields["protocol"].(uint8) != pktMd.Protocol {
-			continue
-		}
-
-		if srcAddr, ok := rule.matchFields["src-addr"]; ok {
-			saddr := srcAddr.(*net.IPNet)
-			if !saddr.Contains(pktMd.SrcAddr) {
-				continue
-			}
-		}
-
-		if dstAddr, ok := rule.matchFields["dst-addr"]; ok {
-			daddr := dstAddr.(*net.IPNet)
-			if !daddr.Contains(pktMd.DstAddr) {
-				continue
-			}
-		}
-
-		// if at least one matching rule is found, we accept a packet to be reported
-		log.WithFields(log.Fields{
-			"packet": pktMd,
-			"rule": rule.matchFields,
-		}).Debugf("Found match for rule #%v", idx)
-		return true
-	}
-
-	return false
 }

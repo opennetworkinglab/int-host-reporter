@@ -25,7 +25,13 @@ func NewIntHostReporter(watchlist *watchlist.INTWatchlist) *IntHostReporter {
 func (itr *IntHostReporter) Start() error {
 	dataPlaneInterfaceCtx, cancel := context.WithCancel(itr.ctx)
 	itr.perfReaderCancel = cancel
-	err := itr.reportHandler.Start()
+
+	err := itr.dataPlaneInterface.Init()
+	if err != nil {
+		return err
+	}
+
+	err = itr.reportHandler.Start()
 	if err != nil {
 		return err
 	}

@@ -27,15 +27,14 @@ func main() {
 	}).Debug("Starting INT Host Reporter.")
 
 
-	var wlist *watchlist.INTWatchlist
+	wlist := watchlist.NewINTWatchlist()
 	if *watchlistConfiguration != "" {
-		w, err := watchlist.ReadFromFile(*watchlistConfiguration)
+		err := watchlist.FillFromFile(wlist, *watchlistConfiguration)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err,
 			}).Fatal("Failed to parse the watchlist configuration file..")
 		}
-		wlist = w
 	}
 
 	intReporter := inthostreporter.NewIntHostReporter(wlist)

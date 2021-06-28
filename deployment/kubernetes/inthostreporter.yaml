@@ -25,6 +25,7 @@ spec:
       containers:
         - name: int-host-reporter
           image: registry.aetherproject.org/tost/int-host-reporter
+          imagePullPolicy: "Always"
           env:
             - name: COLLECTOR
               value: "192.168.99.50:30001"
@@ -34,13 +35,19 @@ spec:
                 fieldRef:
                   fieldPath: status.hostIP
           command: ["int-host-reporter"]
-          args: ["--collector", "$(COLLECTOR)", "--switch-id", "$(NODE_IP)"]
+          args: ["--collector", "$(COLLECTOR)", "--switch-id", "$(NODE_IP)", "-f", "/etc/watchlist/watchlist.yaml"]
           volumeMounts:
             - name: bpffs
               mountPath: /sys/fs/bpf
+            - name: watchlist
+              mountPath: /etc/watchlist/watchlist.yaml
+              subPath: watchlist.yaml
           securityContext:
             privileged: true
       volumes:
         - name: bpffs
           hostPath:
             path: /sys/fs/bpf
+        - name: watchlist
+          configMap:
+            name: watchlist-conf

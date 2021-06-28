@@ -60,10 +60,31 @@ func getSwitchID() (uint32, error) {
 	return 0, fmt.Errorf("unsupported format of switch ID")
 }
 
+func (rh *ReportHandler) initWatchlist() error {
+	for _, rule := range rh.watchlist.GetRules() {
+		err := rh.dataPlaneInterface.UpdateWatchlist(rule.GetProtocol(), rule.GetSrcAddr(), rule.GetDstAddr())
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (rh *ReportHandler) Start() error {
 	// TODO: use github.com/jessevdk/go-flags to configure mandatory flags.
 	if *INTCollectorServer == "" || *INTSwitchID == "" {
 		log.Fatal("The required flags are not provided")
+	}
+
+	err := rh.initWatchlist()
+	if err != nil {
+		log.Fatalf("Failed to initialize the INT watchlist: %v", err)
+	}
+
+	if len(rh.watchlist.GetRules()) > 0 {
+		log.WithFields(log.Fields{
+			"rules": rh.watchlist.GetRules(),
+		}).Debug("Starting with the pre-configured INT watchlist")
 	}
 
 	switchID, err := getSwitchID()
@@ -89,8 +110,8 @@ func (rh *ReportHandler) Start() error {
 		log.Debugf("Starting RX worker %d listening for data plane events.", i)
 		go rh.rxFn(i)
 	}
-	log.Debug("All RX workers started with the following INT watchlist.")
-	rh.watchlist.Dump()
+
+	log.Debug("All RX workers started.")
 	return nil
 }
 
@@ -109,14 +130,6 @@ func (rh *ReportHandler) rxFn(id int) {
 			"Encapsulation":   pktMd.EncapMode,
 		})
 		fields.Debugf("RX worker %d parsed data plane event.", id)
-
-		if shouldReport := rh.watchlist.Classify(pktMd); !shouldReport {
-			fields.Debugf("INT watchlist miss for event")
-			continue
-		}
-
-		// we should report this packet, if it is a new packet; update flow cache
-
 
 		if seqNo >= math.MaxUint32 {
 			seqNo = 0

@@ -171,5 +171,11 @@ func (dpe Event) Parse() *PacketMetadata {
 			}
 		}
 	}
+	
+	if pktMd.DataPlaneReport.PreNATDestinationPort != 0 && !pktMd.DataPlaneReport.PreNATDestinationIP.IsUnspecified() {
+		pktMd.DstPort = pktMd.DataPlaneReport.PreNATDestinationPort
+		copy(pktMd.DstAddr, pktMd.DataPlaneReport.PreNATDestinationIP)
+	}
+
 	return pktMd
 }

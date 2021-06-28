@@ -90,6 +90,10 @@ Follow [the Enable eBPF datapath guide](https://docs.projectcalico.org/maintenan
 
 Edit `deployment/kubernetes/inthostreporter.yaml` and set the `COLLECTOR` variable pointing to the address of the INT collector.
 
+Prepare the INT watchlist file (modify `configs/watchlist.yaml` if needed) and deploy it as ConfigMap. 
+
+`$ kubectl create -n kube-system configmap watchlist-conf --from-file=./configs/watchlist.yaml`
+
 Then, run the below command to deploy the INT Host Reporter.
 
 `$ kubectl apply -f deployment/kubernetes/inthostreporter.yaml`
