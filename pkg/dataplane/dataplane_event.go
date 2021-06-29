@@ -1,4 +1,4 @@
-package inthostreporter
+package dataplane
 
 import (
 	"encoding/binary"
@@ -32,7 +32,7 @@ var (
 	})
 )
 
-type dataPlaneEvent struct {
+type Event struct {
 	Data []byte
 	CPU  int
 }
@@ -83,7 +83,6 @@ func (dpr *DataPlaneReport) DecodeFromBytes(data []byte, p gopacket.PacketBuilde
 		return fmt.Errorf("invalid data plane report. Length %d less than %d",
 			len(data), DataPlaneReportSize)
 	}
-	// Skip
 	dpr.Type = DataPlaneReportType(data[0])
 	dpr.Reason = uint8(data[1])
 	// 2 bytes of padding
@@ -133,7 +132,7 @@ type PacketMetadata struct {
 	IPLayer			*layers.IPv4
 }
 
-func (dpe dataPlaneEvent) Parse() *PacketMetadata {
+func (dpe Event) Parse() *PacketMetadata {
 	pktMd := &PacketMetadata{
 		EncapMode: "none",
 	}
@@ -168,5 +167,11 @@ func (dpe dataPlaneEvent) Parse() *PacketMetadata {
 			}
 		}
 	}
+
+	if pktMd.DataPlaneReport.PreNATDestinationPort != 0 && !pktMd.DataPlaneReport.PreNATDestinationIP.IsUnspecified() {
+		pktMd.DstPort = pktMd.DataPlaneReport.PreNATDestinationPort
+		copy(pktMd.DstAddr, pktMd.DataPlaneReport.PreNATDestinationIP)
+	}
+
 	return pktMd
 }

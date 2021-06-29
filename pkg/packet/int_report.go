@@ -1,10 +1,12 @@
-package inthostreporter
+package packet
 
 import (
 	"encoding/binary"
 	"fmt"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	"github.com/opennetworkinglab/int-host-reporter/pkg/common"
+	"github.com/opennetworkinglab/int-host-reporter/pkg/dataplane"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -144,7 +146,7 @@ func (l INTLocalReportHeader) SerializeTo(b gopacket.SerializeBuffer, opts gopac
 	return nil
 }
 
-func buildINTFlowReport(pktMd *PacketMetadata, switchID uint32, hwID uint8, seqNo uint32) ([]byte, error) {
+func buildINTFlowReport(pktMd *dataplane.PacketMetadata, switchID uint32, hwID uint8, seqNo uint32) ([]byte, error) {
 	fixedReport := INTReportFixedHeader{
 		Version:                   0,
 		NProto:                    NProtoTelemetrySwitchLocal,
@@ -166,7 +168,7 @@ func buildINTFlowReport(pktMd *PacketMetadata, switchID uint32, hwID uint8, seqN
 	localReport := INTLocalReportHeader{
 		INTCommonReportHeader: commonHeader,
 		QueueOccupancy:        0,
-		EgressTimestamp:       uint32(pktMd.DataPlaneReport.IngressTimestamp) + DummyHopLatency,
+		EgressTimestamp:       uint32(pktMd.DataPlaneReport.IngressTimestamp) + common.DummyHopLatency,
 	}
 	payload := gopacket.Payload(pktMd.DataPlaneReport.LayerPayload())
 
@@ -203,9 +205,9 @@ func buildINTFlowReport(pktMd *PacketMetadata, switchID uint32, hwID uint8, seqN
 	return buf.Bytes(), nil
 }
 
-func buildINTReport(pktMd *PacketMetadata, switchID uint32, hwID uint8, seqNo uint32) (data []byte, err error) {
+func BuildINTReport(pktMd *dataplane.PacketMetadata, switchID uint32, hwID uint8, seqNo uint32) (data []byte, err error) {
 	switch pktMd.DataPlaneReport.Type {
-	case TraceReport:
+	case dataplane.TraceReport:
 		data, err = buildINTFlowReport(pktMd, switchID, hwID, seqNo)
 	// TODO: handle drop reports
 	//  case DropReport:

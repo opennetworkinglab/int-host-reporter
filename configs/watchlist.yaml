@@ -1,0 +1,12 @@
+# Sample INT watchlist configuration; only exact match fields are supported now.
+# All 3 fields (protocol, src-addr, dst-addr) are mandatory.
+rules:
+  - protocol: "UDP"
+    src-addr: "192.168.99.50"
+    dst-addr: "192.168.99.20"
+  - protocol: "TCP"
+    src-addr: "192.168.99.50"
+    dst-addr: "192.168.99.20"
+  - protocol: "TCP"
+    src-addr: "192.168.99.20"
+    dst-addr: "192.168.99.50"
