@@ -27,14 +27,15 @@ func (d *DataPlaneInterface) SetEventChannel(ch chan Event) {
 }
 
 func (d *DataPlaneInterface) Init() error {
-	path := common.DefaultMapRoot + "/" + common.DefaultMapPrefix + "/" + common.CalicoWatchlistMap
+	commonPath := common.DefaultMapRoot + "/" + common.DefaultMapPrefix
+	path := commonPath + "/" + common.CalicoWatchlistMap
 	watchlistMap, err := ebpf.LoadPinnedMap(path, nil)
 	if err != nil {
 		return err
 	}
 	d.watchlistMap = watchlistMap
 
-	path = common.DefaultMapRoot + "/" + common.DefaultMapPrefix + "/" + common.CalicoPerfEventArray
+	path = commonPath + "/" + common.CalicoPerfEventArray
 	eventsMap, err := ebpf.LoadPinnedMap(path, nil)
 	if err != nil {
 		return err
