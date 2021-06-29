@@ -144,32 +144,54 @@ func (l INTLocalReportHeader) SerializeTo(b gopacket.SerializeBuffer, opts gopac
 	return nil
 }
 
-func buildINTFlowReport(pktMd *PacketMetadata, switchID uint32, hwID uint8, seqNo uint32) ([]byte, error) {
-	fixedReport := INTReportFixedHeader{
+func (d INTDropReportHeader) String() string {
+	return fmt.Sprintf("SwitchID=%v, IngressPort=%v, EgressPort=%v, DropReason=%v",
+		d.SwitchID, d.IngressPort, d.EgressPort, d.DropReason)
+}
+
+func (d INTDropReportHeader) LayerType() gopacket.LayerType {
+	return LayerTypeINTDropReportHeader
+}
+
+func (d INTDropReportHeader) SerializeTo(b gopacket.SerializeBuffer, opts gopacket.SerializeOptions) error {
+	bytes, err := b.PrependBytes(SizeINTDropReportHeader)
+	if err != nil {
+		return err
+	}
+
+	binary.BigEndian.PutUint32(bytes[0:], d.SwitchID)
+	binary.BigEndian.PutUint16(bytes[4:], d.IngressPort)
+	binary.BigEndian.PutUint16(bytes[6:], d.EgressPort)
+	bytes[8] = d.QueueID
+	bytes[9] = d.DropReason
+
+	return nil
+}
+
+func getINTFixedHeader(pktMd *PacketMetadata, hwID uint8, seqNo uint32) INTReportFixedHeader {
+	return INTReportFixedHeader{
 		Version:                   0,
-		NProto:                    NProtoTelemetrySwitchLocal,
+		NProto:                    0,
 		Dropped:                   false,
 		CongestedQueueAssociation: false,
-		TrackedFlowAssociation:    true,
+		TrackedFlowAssociation:    false,
 		HwID:                      hwID,
 		SeqNo:                     seqNo,
 		IngressTimestamp:          uint32(pktMd.DataPlaneReport.IngressTimestamp),
 	}
+}
 
-	commonHeader := INTCommonReportHeader{
+func getINTCommonHeader(pktMd *PacketMetadata, switchID uint32) INTCommonReportHeader {
+	return INTCommonReportHeader{
 		SwitchID:    switchID,
 		IngressPort: uint16(pktMd.DataPlaneReport.IngressPort),
 		EgressPort:  uint16(pktMd.DataPlaneReport.EgressPort),
 		QueueID:     0,
 	}
+}
 
-	localReport := INTLocalReportHeader{
-		INTCommonReportHeader: commonHeader,
-		QueueOccupancy:        0,
-		EgressTimestamp:       uint32(pktMd.DataPlaneReport.IngressTimestamp) + DummyHopLatency,
-	}
+func getINTPayload(pktMd *PacketMetadata) gopacket.Payload {
 	payload := gopacket.Payload(pktMd.DataPlaneReport.LayerPayload())
-
 	if pktMd.EncapMode == "vxlan" {
 		// strip VXLAN out - our design choice is to report only the inner headers
 		payload = payload[SizeEthernetIPv4UDPVXLAN:]
@@ -183,6 +205,21 @@ func buildINTFlowReport(pktMd *PacketMetadata, switchID uint32, hwID uint8, seqN
 		copy(payload[OffsetDestinationPortNoEncap:OffsetDestinationPortNoEncap+2], b)
 	}
 
+	return payload
+}
+
+func buildINTFlowReport(pktMd *PacketMetadata, switchID uint32, hwID uint8, seqNo uint32) ([]byte, error) {
+	fixedReport := getINTFixedHeader(pktMd, hwID, seqNo)
+	fixedReport.NProto = NProtoTelemetrySwitchLocal
+	fixedReport.TrackedFlowAssociation = true
+	commonHeader := getINTCommonHeader(pktMd, switchID)
+	localReport := INTLocalReportHeader{
+		INTCommonReportHeader: commonHeader,
+		QueueOccupancy:        0,
+		EgressTimestamp:       uint32(pktMd.DataPlaneReport.IngressTimestamp) + DummyHopLatency,
+	}
+	payload := getINTPayload(pktMd)
+
 	log.WithFields(log.Fields{
 		"fixed-report": fixedReport,
 		"flow-report": localReport,
@@ -191,7 +228,6 @@ func buildINTFlowReport(pktMd *PacketMetadata, switchID uint32, hwID uint8, seqN
 
 	buf := gopacket.NewSerializeBuffer()
 	opts := gopacket.SerializeOptions{}
-
 	err := gopacket.SerializeLayers(buf, opts,
 		&fixedReport,
 		&localReport,
@@ -203,12 +239,43 @@ func buildINTFlowReport(pktMd *PacketMetadata, switchID uint32, hwID uint8, seqN
 	return buf.Bytes(), nil
 }
 
+func buildINTDropReport(pktMd *PacketMetadata, switchID uint32, hwID uint8, seqNo uint32) ([]byte, error) {
+	fixedReport := getINTFixedHeader(pktMd, hwID, seqNo)
+	fixedReport.Dropped = true
+	fixedReport.NProto = NProtoTelemetryDrop
+	commonHeader := getINTCommonHeader(pktMd, switchID)
+	payload := getINTPayload(pktMd)
+
+	dropReport := INTDropReportHeader{
+		INTCommonReportHeader: commonHeader,
+		DropReason:            pktMd.DataPlaneReport.Reason,
+	}
+
+	log.WithFields(log.Fields{
+		"fixed-report": fixedReport,
+		"drop-report": dropReport,
+		"payload":     payload,
+	}).Debug("INT Drop Report built")
+
+	buf := gopacket.NewSerializeBuffer()
+	opts := gopacket.SerializeOptions{}
+	err := gopacket.SerializeLayers(buf, opts,
+									&fixedReport,
+									&dropReport,
+									payload)
+	if err != nil {
+		return []byte{}, fmt.Errorf("failed to serialize INT Flow Report: %v", err)
+	}
+
+	return buf.Bytes(), nil
+}
+
 func buildINTReport(pktMd *PacketMetadata, switchID uint32, hwID uint8, seqNo uint32) (data []byte, err error) {
 	switch pktMd.DataPlaneReport.Type {
 	case TraceReport:
 		data, err = buildINTFlowReport(pktMd, switchID, hwID, seqNo)
-	// TODO: handle drop reports
-	//  case DropReport:
+	case DropReport:
+		data, err = buildINTDropReport(pktMd, switchID, hwID, seqNo)
 	default:
 		return []byte{}, fmt.Errorf("unknown report type")
 	}
