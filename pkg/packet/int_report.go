@@ -22,9 +22,9 @@ const (
 	// Used to strip out the outer headers.
 	SizeEthernetIPv4UDPVXLAN = 50
 
-	OffsetDestinationIPVXLAN = 80
-	OffsetDestinationPortVXLAN = 86
-	OffsetDestinationIPNoEncap = 30
+	OffsetDestinationIPVXLAN     = 80
+	OffsetDestinationPortVXLAN   = 86
+	OffsetDestinationIPNoEncap   = 30
 	OffsetDestinationPortNoEncap = 36
 )
 
@@ -224,8 +224,8 @@ func buildINTFlowReport(pktMd *dataplane.PacketMetadata, switchID uint32, hwID u
 
 	log.WithFields(log.Fields{
 		"fixed-report": fixedReport,
-		"flow-report": localReport,
-		"payload":     payload,
+		"flow-report":  localReport,
+		"payload":      payload,
 	}).Debug("INT Flow Report built")
 
 	buf := gopacket.NewSerializeBuffer()
@@ -255,16 +255,16 @@ func buildINTDropReport(pktMd *dataplane.PacketMetadata, switchID uint32, hwID u
 
 	log.WithFields(log.Fields{
 		"fixed-report": fixedReport,
-		"drop-report": dropReport,
-		"payload":     payload,
+		"drop-report":  dropReport,
+		"payload":      payload,
 	}).Debug("INT Drop Report built")
 
 	buf := gopacket.NewSerializeBuffer()
 	opts := gopacket.SerializeOptions{}
 	err := gopacket.SerializeLayers(buf, opts,
-									&fixedReport,
-									&dropReport,
-									payload)
+		&fixedReport,
+		&dropReport,
+		payload)
 	if err != nil {
 		return []byte{}, fmt.Errorf("failed to serialize INT Flow Report: %v", err)
 	}
