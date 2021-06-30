@@ -4,6 +4,8 @@ import (
 	"encoding/binary"
 	"flag"
 	"fmt"
+	"github.com/opennetworkinglab/int-host-reporter/pkg/dataplane"
+	"github.com/opennetworkinglab/int-host-reporter/pkg/packet"
 	log "github.com/sirupsen/logrus"
 	"math"
 	"net"
@@ -14,11 +16,6 @@ const (
 	// TODO (tomasz): make it configurable
 	rxChannelSize = 100
 	rxWorkers     = 2
-
-	// DummyHopLatency
-	// FIXME: PoC-only: we use DummyHopLatency to provide dummy hop latency for the INT collector.
-	//  EgressTimestamp should be used to calculate hop latency.
-	DummyHopLatency = 5000
 )
 
 var (
@@ -33,14 +30,14 @@ type ReportHandler struct {
 	// thread-safe
 	udpConn *net.UDPConn
 
-	reportsChannel     chan dataPlaneEvent
-	dataPlaneInterface *dataPlaneInterface
+	reportsChannel     chan dataplane.Event
+	dataPlaneInterface *dataplane.DataPlaneInterface
 }
 
-func NewReportHandler(dpi *dataPlaneInterface) *ReportHandler {
+func NewReportHandler(dpi *dataplane.DataPlaneInterface) *ReportHandler {
 	rh := &ReportHandler{}
 	rh.dataPlaneInterface = dpi
-	rh.reportsChannel = make(chan dataPlaneEvent, rxChannelSize)
+	rh.reportsChannel = make(chan dataplane.Event, rxChannelSize)
 	return rh
 }
 
@@ -88,6 +85,7 @@ func (rh *ReportHandler) Start() error {
 		log.Debugf("Starting RX worker %d listening for data plane events.", i)
 		go rh.rxFn(i)
 	}
+
 	log.Debug("All RX workers started.")
 	return nil
 }
@@ -97,7 +95,7 @@ func (rh *ReportHandler) rxFn(id int) {
 	seqNo := uint32(0)
 	for event := range rh.reportsChannel {
 		pktMd := event.Parse()
-		log.WithFields(log.Fields{
+		fields := log.WithFields(log.Fields{
 			"DataPlaneReport": pktMd.DataPlaneReport,
 			"SrcAddr":         pktMd.SrcAddr,
 			"DstAddr":         pktMd.DstAddr,
@@ -105,7 +103,8 @@ func (rh *ReportHandler) rxFn(id int) {
 			"SrcPort":         pktMd.SrcPort,
 			"DstPort":         pktMd.DstPort,
 			"Encapsulation":   pktMd.EncapMode,
-		}).Debugf("RX worker %d parsed data plane event.", id)
+		})
+		fields.Debugf("RX worker %d parsed data plane event.", id)
 
 		if seqNo >= math.MaxUint32 {
 			seqNo = 0
@@ -113,17 +112,17 @@ func (rh *ReportHandler) rxFn(id int) {
 			seqNo++
 		}
 
-		data, err := buildINTReport(pktMd, rh.switchID, hwID, seqNo)
+		data, err := packet.BuildINTReport(pktMd, rh.switchID, hwID, seqNo)
 		if err != nil {
-			log.Errorf("failed to build INT report: %v", err)
+			fields.Errorf("failed to build INT report: %v", err)
 			continue
 		}
 
 		n, err := rh.udpConn.Write(data)
 		if err != nil {
-			log.Errorf("failed to sent UDP packet: %v", err)
+			fields.Errorf("failed to sent UDP packet: %v", err)
 			continue
 		}
-		log.Tracef("RX worker %d sent %d bytes to %v", id, n, rh.udpConn.RemoteAddr())
+		fields.Tracef("RX worker %d sent %d bytes to %v", id, n, rh.udpConn.RemoteAddr())
 	}
 }

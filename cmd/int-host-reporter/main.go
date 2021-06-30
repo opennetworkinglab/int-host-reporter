@@ -6,9 +6,17 @@ package main
 import (
 	"flag"
 	"github.com/opennetworkinglab/int-host-reporter/pkg/inthostreporter"
+	"github.com/opennetworkinglab/int-host-reporter/pkg/watchlist"
 	log "github.com/sirupsen/logrus"
 )
 
+var (
+	watchlistConfiguration = flag.String("watchlist-conf", "", "File with INT watchlist configuration")
+)
+
+func init() {
+	flag.StringVar(watchlistConfiguration, "f", "", "")
+}
 
 func main() {
 	flag.Parse()
@@ -18,10 +26,21 @@ func main() {
 		"switchID": *inthostreporter.INTSwitchID,
 	}).Debug("Starting INT Host Reporter.")
 
+
+	wlist := watchlist.NewINTWatchlist()
+	if *watchlistConfiguration != "" {
+		err := watchlist.FillFromFile(wlist, *watchlistConfiguration)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err,
+			}).Fatal("Failed to parse the watchlist configuration file..")
+		}
+	}
+
 	intReporter := inthostreporter.NewIntHostReporter()
 
 	// Blocking
-	err := intReporter.Start()
+	err := intReporter.Start(wlist)
 	if err != nil {
 		log.Fatalf("Error while running INT Host Reporter: %v", err)
 	}

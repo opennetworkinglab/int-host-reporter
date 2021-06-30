@@ -1,10 +1,12 @@
-package inthostreporter
+package packet
 
 import (
 	"encoding/binary"
 	"fmt"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	"github.com/opennetworkinglab/int-host-reporter/pkg/common"
+	"github.com/opennetworkinglab/int-host-reporter/pkg/dataplane"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -168,7 +170,7 @@ func (d INTDropReportHeader) SerializeTo(b gopacket.SerializeBuffer, opts gopack
 	return nil
 }
 
-func getINTFixedHeader(pktMd *PacketMetadata, hwID uint8, seqNo uint32) INTReportFixedHeader {
+func getINTFixedHeader(pktMd *dataplane.PacketMetadata, hwID uint8, seqNo uint32) INTReportFixedHeader {
 	return INTReportFixedHeader{
 		Version:                   0,
 		NProto:                    0,
@@ -181,7 +183,7 @@ func getINTFixedHeader(pktMd *PacketMetadata, hwID uint8, seqNo uint32) INTRepor
 	}
 }
 
-func getINTCommonHeader(pktMd *PacketMetadata, switchID uint32) INTCommonReportHeader {
+func getINTCommonHeader(pktMd *dataplane.PacketMetadata, switchID uint32) INTCommonReportHeader {
 	return INTCommonReportHeader{
 		SwitchID:    switchID,
 		IngressPort: uint16(pktMd.DataPlaneReport.IngressPort),
@@ -190,7 +192,7 @@ func getINTCommonHeader(pktMd *PacketMetadata, switchID uint32) INTCommonReportH
 	}
 }
 
-func getINTPayload(pktMd *PacketMetadata) gopacket.Payload {
+func getINTPayload(pktMd *dataplane.PacketMetadata) gopacket.Payload {
 	payload := gopacket.Payload(pktMd.DataPlaneReport.LayerPayload())
 	if pktMd.EncapMode == "vxlan" {
 		// strip VXLAN out - our design choice is to report only the inner headers
@@ -208,7 +210,7 @@ func getINTPayload(pktMd *PacketMetadata) gopacket.Payload {
 	return payload
 }
 
-func buildINTFlowReport(pktMd *PacketMetadata, switchID uint32, hwID uint8, seqNo uint32) ([]byte, error) {
+func buildINTFlowReport(pktMd *dataplane.PacketMetadata, switchID uint32, hwID uint8, seqNo uint32) ([]byte, error) {
 	fixedReport := getINTFixedHeader(pktMd, hwID, seqNo)
 	fixedReport.NProto = NProtoTelemetrySwitchLocal
 	fixedReport.TrackedFlowAssociation = true
@@ -216,7 +218,7 @@ func buildINTFlowReport(pktMd *PacketMetadata, switchID uint32, hwID uint8, seqN
 	localReport := INTLocalReportHeader{
 		INTCommonReportHeader: commonHeader,
 		QueueOccupancy:        0,
-		EgressTimestamp:       uint32(pktMd.DataPlaneReport.IngressTimestamp) + DummyHopLatency,
+		EgressTimestamp:       uint32(pktMd.DataPlaneReport.IngressTimestamp) + common.DummyHopLatency,
 	}
 	payload := getINTPayload(pktMd)
 
@@ -239,7 +241,7 @@ func buildINTFlowReport(pktMd *PacketMetadata, switchID uint32, hwID uint8, seqN
 	return buf.Bytes(), nil
 }
 
-func buildINTDropReport(pktMd *PacketMetadata, switchID uint32, hwID uint8, seqNo uint32) ([]byte, error) {
+func buildINTDropReport(pktMd *dataplane.PacketMetadata, switchID uint32, hwID uint8, seqNo uint32) ([]byte, error) {
 	fixedReport := getINTFixedHeader(pktMd, hwID, seqNo)
 	fixedReport.Dropped = true
 	fixedReport.NProto = NProtoTelemetryDrop
@@ -270,11 +272,11 @@ func buildINTDropReport(pktMd *PacketMetadata, switchID uint32, hwID uint8, seqN
 	return buf.Bytes(), nil
 }
 
-func buildINTReport(pktMd *PacketMetadata, switchID uint32, hwID uint8, seqNo uint32) (data []byte, err error) {
+func BuildINTReport(pktMd *dataplane.PacketMetadata, switchID uint32, hwID uint8, seqNo uint32) (data []byte, err error) {
 	switch pktMd.DataPlaneReport.Type {
-	case TraceReport:
+	case dataplane.TraceReport:
 		data, err = buildINTFlowReport(pktMd, switchID, hwID, seqNo)
-	case DropReport:
+	case dataplane.DropReport:
 		data, err = buildINTDropReport(pktMd, switchID, hwID, seqNo)
 	default:
 		return []byte{}, fmt.Errorf("unknown report type")
