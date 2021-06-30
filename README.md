@@ -104,6 +104,17 @@ kube-system   int-host-reporter-ljwvs                    1/1     Running   0    
 kube-system   int-host-reporter-x48ps                    1/1     Running   0          9m11s   10.67.219.106   kubemaster   <none>           <none>
 ```
 
+## Verify drop reports
+
+The drop reasons specified by the Calico eBPF datapath are eBPF-specific (e.g. fail to adjust room during encapsulation). 
+Thus, it is not straightforward to verify drop reports. The common case for packet drops is a malformed IPv4 packet (e.g. ihl != 5).
+To verify drop reports we can simply generate malformed UDP packets. Note that destination IPv4 address and UDP port 
+must point to the K8s NodePort service.
+
+```bash
+$ sendp(Ether()/IP(ihl=4,dst="192.168.99.20",ttl=(1,4))/UDP(dport=31584), iface="enp0s8")
+```
+
 ## Conclusions from PoC
 
 - consider adding a `flow-id` field to the INT report to correlate pre-/post-NAT flows. Although the Calico datapath provides 
