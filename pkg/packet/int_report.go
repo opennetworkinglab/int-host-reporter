@@ -28,6 +28,19 @@ const (
 	OffsetDestinationPortNoEncap = 36
 )
 
+const (
+	// Common drop reasons
+	DropReasonUnknown = 0
+	DropReasonIPTTLZero = 26
+	DropReasonRoutingMiss = 29
+	DropReasonPortVLANMappingMiss = 55
+	DropReasonTrafficManager = 71
+	DropReasonACLDeny = 80
+	DropReasonBridginMiss = 89
+
+	// TODO: Calico-specific drop reasons
+)
+
 var (
 	LayerTypeINTReportFixedHeader = gopacket.RegisterLayerType(1001, gopacket.LayerTypeMetadata{
 		Name: "INTReportFixedHeader",
@@ -170,6 +183,21 @@ func (d INTDropReportHeader) SerializeTo(b gopacket.SerializeBuffer, opts gopack
 	return nil
 }
 
+func dropReasonConvertFromDatapathToINT(datapathCode uint8) uint8 {
+	switch datapathCode {
+	case 0:
+		// unknown reason has the same code.
+		return datapathCode
+	case 240:
+		return DropReasonIPTTLZero
+	default:
+		log.WithFields(log.Fields{
+			"code": datapathCode,
+		}).Warning("unknown drop reason reported by datapath. Returning unknown reason.")
+		return DropReasonUnknown
+	}
+}
+
 func getINTFixedHeader(pktMd *dataplane.PacketMetadata, hwID uint8, seqNo uint32) INTReportFixedHeader {
 	return INTReportFixedHeader{
 		Version:                   0,
@@ -250,7 +278,7 @@ func buildINTDropReport(pktMd *dataplane.PacketMetadata, switchID uint32, hwID u
 
 	dropReport := INTDropReportHeader{
 		INTCommonReportHeader: commonHeader,
-		DropReason:            pktMd.DataPlaneReport.Reason,
+		DropReason:            dropReasonConvertFromDatapathToINT(pktMd.DataPlaneReport.Reason),
 	}
 
 	log.WithFields(log.Fields{

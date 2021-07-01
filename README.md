@@ -116,7 +116,7 @@ To verify drop reports we can simply generate malformed UDP packets. Note that d
 must point to the K8s NodePort service.
 
 ```bash
-$ sendp(Ether()/IP(ihl=4,dst="192.168.99.20",ttl=(1,4))/UDP(dport=31584), iface="enp0s8")
+$ sendp(Ether()/IP(dst="192.168.99.20",ttl=0)/UDP(dport=31584), iface="enp0s8")
 ```
 
 ## Conclusions from PoC
@@ -126,7 +126,9 @@ $ sendp(Ether()/IP(ihl=4,dst="192.168.99.20",ttl=(1,4))/UDP(dport=31584), iface=
   For example, there is a problem with a specific Pod, but the INT collector will see a report related to the K8s Service - 
   given the fact that we can have many (!) Pods under a single K8s Service it may cause troubleshooting really difficult.
   The ideal situation would be that we provide an original packet (pre- or post-NAT'ed, depending on the trace point) plus 
-  the `flow-id`, so the INT collector can easily correlate packets. 
+  the `flow-id`, so the INT collector can easily correlate packets.
+- The SCTP protocol is not supported by already-existing eBPF datapaths. Neither Calico nor Cilium supports SCTP. 
+  It may be an important restriction as the CU-DU interface uses SCTP.
 
 ## TODOs 
 
