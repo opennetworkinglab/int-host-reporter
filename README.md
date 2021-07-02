@@ -108,6 +108,17 @@ kube-system   int-host-reporter-ljwvs                    1/1     Running   0    
 kube-system   int-host-reporter-x48ps                    1/1     Running   0          9m11s   10.67.219.106   kubemaster   <none>           <none>
 ```
 
+## Verify drop reports
+
+The drop reasons specified by the Calico eBPF datapath are eBPF-specific (e.g. fail to adjust room during encapsulation). 
+Thus, it is not straightforward to verify drop reports. The common case for packet drops is IP TTL < 0.
+To verify drop reports we can simply generate UDP packets with IPv4 TTL = 0. Note that destination IPv4 address and UDP port 
+must point to the K8s NodePort service.
+
+```bash
+$ sendp(Ether()/IP(dst="192.168.99.20",ttl=0)/UDP(dport=31584), iface="enp0s8")
+```
+
 ## Conclusions from PoC
 
 - consider adding a `flow-id` field to the INT report to correlate pre-/post-NAT flows. Although the Calico datapath provides 
@@ -115,7 +126,9 @@ kube-system   int-host-reporter-x48ps                    1/1     Running   0    
   For example, there is a problem with a specific Pod, but the INT collector will see a report related to the K8s Service - 
   given the fact that we can have many (!) Pods under a single K8s Service it may cause troubleshooting really difficult.
   The ideal situation would be that we provide an original packet (pre- or post-NAT'ed, depending on the trace point) plus 
-  the `flow-id`, so the INT collector can easily correlate packets. 
+  the `flow-id`, so the INT collector can easily correlate packets.
+- The SCTP protocol is not supported by already-existing eBPF datapaths. Neither Calico nor Cilium supports SCTP. 
+  It may be an important restriction as the CU-DU interface uses SCTP.
 
 ## TODOs 
 
