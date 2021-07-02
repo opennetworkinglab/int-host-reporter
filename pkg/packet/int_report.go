@@ -31,14 +31,22 @@ const (
 const (
 	// Common drop reasons
 	DropReasonUnknown = 0
+	DropReasonIPVersionInvalid = 25
 	DropReasonIPTTLZero = 26
+	DropReasonIPIHLInvalid = 30
+	DropReasonIPInvalidChecksum = 31
 	DropReasonRoutingMiss = 29
 	DropReasonPortVLANMappingMiss = 55
 	DropReasonTrafficManager = 71
 	DropReasonACLDeny = 80
 	DropReasonBridginMiss = 89
 
-	// TODO: Calico-specific drop reasons
+	// Calico-specific drop reasons
+	DropReasonEncapFail = 180
+	DropReasonDecapFail = 181
+	DropReasonChecksumFail = 182
+	DropReasonIPOptions = 183
+	DropReasonUnauthSource = 184
 )
 
 var (
@@ -188,8 +196,22 @@ func dropReasonConvertFromDatapathToINT(datapathCode uint8) uint8 {
 	case 0:
 		// unknown reason has the same code.
 		return datapathCode
+	case 207:
+		return DropReasonChecksumFail
+	case 239:
+		return DropReasonEncapFail
+	case 223:
+		return DropReasonDecapFail
+	case 235:
+		return DropReasonIPOptions
+	case 236:
+		return DropReasonIPIHLInvalid
+	case 237:
+		return DropReasonUnauthSource
 	case 240:
 		return DropReasonIPTTLZero
+	case 241:
+		return DropReasonACLDeny
 	default:
 		log.WithFields(log.Fields{
 			"code": datapathCode,

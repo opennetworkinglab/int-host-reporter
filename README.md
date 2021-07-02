@@ -111,8 +111,8 @@ kube-system   int-host-reporter-x48ps                    1/1     Running   0    
 ## Verify drop reports
 
 The drop reasons specified by the Calico eBPF datapath are eBPF-specific (e.g. fail to adjust room during encapsulation). 
-Thus, it is not straightforward to verify drop reports. The common case for packet drops is a malformed IPv4 packet (e.g. ihl != 5).
-To verify drop reports we can simply generate malformed UDP packets. Note that destination IPv4 address and UDP port 
+Thus, it is not straightforward to verify drop reports. The common case for packet drops is IP TTL < 0.
+To verify drop reports we can simply generate UDP packets with IPv4 TTL = 0. Note that destination IPv4 address and UDP port 
 must point to the K8s NodePort service.
 
 ```bash
