@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
-	"github.com/opennetworkinglab/int-host-reporter/pkg/common"
 	"github.com/opennetworkinglab/int-host-reporter/pkg/dataplane"
 	log "github.com/sirupsen/logrus"
 )
@@ -268,7 +267,7 @@ func buildINTFlowReport(pktMd *dataplane.PacketMetadata, switchID uint32, hwID u
 	localReport := INTLocalReportHeader{
 		INTCommonReportHeader: commonHeader,
 		QueueOccupancy:        0,
-		EgressTimestamp:       uint32(pktMd.DataPlaneReport.IngressTimestamp) + common.DummyHopLatency,
+		EgressTimestamp:       uint32(pktMd.DataPlaneReport.EgressTimestamp),
 	}
 	payload := getINTPayload(pktMd)
 
