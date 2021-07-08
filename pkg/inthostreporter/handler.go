@@ -50,7 +50,7 @@ func getSwitchID() (uint32, error) {
 	// try IP format
 	ip := net.ParseIP(*INTSwitchID).To4()
 	if ip != nil {
-		return binary.LittleEndian.Uint32(ip), nil
+		return binary.BigEndian.Uint32(ip), nil
 	}
 
 	return 0, fmt.Errorf("unsupported format of switch ID")
