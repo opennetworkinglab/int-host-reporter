@@ -1,0 +1,27 @@
+# Copyright 2020-present Open Networking Foundation
+# SPDX-License-Identifier: LicenseRef-ONF-Member-1.0
+
+name: Docker Build and Push
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Build the Docker images
+        run: docker build -t registry.aetherproject.org/tost/int-host-reporter:latest .
+
+      - name: Login to Aether registry
+        run: docker login registry.aetherproject.org --username ${{ secrets.AETHER_DOCKER_REGISTRY_LOGIN }} --password ${{ secrets.AETHER_DOCKER_REGISTRY_PASSWORD }}
+        if: github.ref == 'refs/heads/main'
+
+      - name: Push image to Aether registry
+        run: docker push registry.aetherproject.org/tost/int-host-reporter:latest
+        if: github.ref == 'refs/heads/main'
