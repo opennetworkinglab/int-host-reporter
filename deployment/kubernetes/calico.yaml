@@ -3658,16 +3658,19 @@ spec:
               value: "autodetect"
             # Enable IPIP
             - name: CALICO_IPV4POOL_IPIP
-              value: "Always"
+              value: "Never"
             # Enable or Disable VXLAN on the default IP pool.
             - name: CALICO_IPV4POOL_VXLAN
-              value: "Never"
+              value: "Always"
             # Set MTU for tunnel device used if ipip is enabled
             - name: FELIX_IPINIPMTU
               valueFrom:
                 configMapKeyRef:
                   name: calico-config
                   key: veth_mtu
+            # Enable VXLAN.
+            - name: FELIX_VXLANENABLED
+              value: "true"
             # Set MTU for the VXLAN tunnel device.
             - name: FELIX_VXLANMTU
               valueFrom:
