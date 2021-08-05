@@ -21,8 +21,8 @@ type WatchlistYAML struct {
 
 type INTWatchlistRule struct {
 	protocol uint8
-	srcAddr  net.IP
-	dstAddr  net.IP
+	srcAddr  net.IPNet
+	dstAddr  net.IPNet
 	// TODO: currently we don't match on L4 ports
 	//srcPort  uint16
 	//dstPort  uint16
@@ -37,11 +37,11 @@ func (rule INTWatchlistRule) GetProtocol() uint8 {
 	return rule.protocol
 }
 
-func (rule INTWatchlistRule) GetSrcAddr() net.IP {
+func (rule INTWatchlistRule) GetSrcAddr() net.IPNet {
 	return rule.srcAddr
 }
 
-func (rule INTWatchlistRule) GetDstAddr() net.IP {
+func (rule INTWatchlistRule) GetDstAddr() net.IPNet {
 	return rule.dstAddr
 }
 
@@ -104,18 +104,18 @@ func parseINTWatchlistRule(rule WatchlistRuleYAML) (INTWatchlistRule, error) {
 	}
 	r.protocol = proto
 	if rule.SrcAddr != "" {
-		ip := net.ParseIP(rule.SrcAddr)
-		if ip == nil {
+		_, ipNet, err := net.ParseCIDR(rule.SrcAddr)
+		if err != nil {
 			return INTWatchlistRule{}, fmt.Errorf("failed to parse SrcAddr")
 		}
-		r.srcAddr = ip
+		r.srcAddr = *ipNet
 	}
 	if rule.DstAddr != "" {
-		ip := net.ParseIP(rule.DstAddr)
-		if ip == nil {
-			return INTWatchlistRule{}, fmt.Errorf("failed to parse DstAddr")
+		_, ipNet, err := net.ParseCIDR(rule.DstAddr)
+		if err != nil {
+			return INTWatchlistRule{}, fmt.Errorf("failed to parse SrcAddr")
 		}
-		r.dstAddr = ip
+		r.dstAddr = *ipNet
 	}
 
 	return r, nil

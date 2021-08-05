@@ -1,11 +1,13 @@
 package dataplane
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/perf"
 	"github.com/opennetworkinglab/int-host-reporter/pkg/common"
+	"github.com/opennetworkinglab/int-host-reporter/pkg/watchlist"
 	log "github.com/sirupsen/logrus"
 	"net"
 )
@@ -13,7 +15,9 @@ import (
 type DataPlaneInterface struct {
 	eventsChannel   chan Event
 
-	watchlistMap    *ebpf.Map
+	watchlistMapProtoSrcAddr    *ebpf.Map
+	watchlistMapDstAddr 		*ebpf.Map
+
 	perfEventArray  *ebpf.Map
 	dataPlaneReader *perf.Reader
 }
@@ -28,12 +32,19 @@ func (d *DataPlaneInterface) SetEventChannel(ch chan Event) {
 
 func (d *DataPlaneInterface) Init() error {
 	commonPath := common.DefaultMapRoot + "/" + common.DefaultMapPrefix
-	path := commonPath + "/" + common.CalicoWatchlistMap
+	path := commonPath + "/" + common.CalicoWatchlistMapProtoSrcAddr
 	watchlistMap, err := ebpf.LoadPinnedMap(path, nil)
 	if err != nil {
 		return err
 	}
-	d.watchlistMap = watchlistMap
+	d.watchlistMapProtoSrcAddr = watchlistMap
+
+	path = commonPath + "/" + common.CalicoWatchlistMapDstAddr
+	watchlistMap, err = ebpf.LoadPinnedMap(path, nil)
+	if err != nil {
+		return err
+	}
+	d.watchlistMapDstAddr = watchlistMap
 
 	path = commonPath + "/" + common.CalicoPerfEventArray
 	eventsMap, err := ebpf.LoadPinnedMap(path, nil)
@@ -72,22 +83,63 @@ func (d *DataPlaneInterface) Start(stopCtx context.Context) error {
 	}
 }
 
-func (d *DataPlaneInterface) UpdateWatchlist(protocol uint8, srcAddr net.IP, dstAddr net.IP) error {
-	key := struct {
+func calculateBitVectorForProtoSrcAddrMap(protocol uint32, srcAddr net.IPNet, allRules []watchlist.INTWatchlistRule) uint64 {
+	log.Debugf("Calculating BitVector for Protocol=%v, SrcAddr=%v", protocol, srcAddr)
+	var bitvector uint64 = 0
+	for idx, rule := range allRules {
+		if protocol == uint32(rule.GetProtocol()) &&
+			(rule.GetSrcAddr().IP.Equal(srcAddr.IP) && bytes.Equal(rule.GetSrcAddr().Mask, srcAddr.Mask)) {
+			bitvector = bitvector | (1 << idx)
+		}
+	}
+	return bitvector
+}
+
+func calculateBitVectorForDstAddr(dstAddr net.IPNet, allRules []watchlist.INTWatchlistRule) uint64 {
+	log.Debugf("Calculating BitVector for DstAddr=%v", dstAddr)
+	var bitvector uint64 = 0
+	for idx, rule := range allRules {
+		if rule.GetDstAddr().IP.Equal(dstAddr.IP) && bytes.Equal(rule.GetDstAddr().Mask, dstAddr.Mask) {
+			bitvector = bitvector | (1 << idx)
+		}
+	}
+	return bitvector
+}
+
+func (d *DataPlaneInterface) UpdateWatchlist(protocol uint8, srcAddr net.IPNet, dstAddr net.IPNet, allRules []watchlist.INTWatchlistRule) error {
+	keyProtoSrcAddr := struct {
+		prefixlen uint32
 		protocol uint32
 		saddr uint32
-		daddr uint32
 	}{}
-	key.protocol = uint32(protocol)
-	key.saddr = binary.LittleEndian.Uint32(srcAddr.To4())
-	key.daddr = binary.LittleEndian.Uint32(dstAddr.To4())
+	ones, _ := srcAddr.Mask.Size()
+	keyProtoSrcAddr.prefixlen = 32 + uint32(ones)
+	keyProtoSrcAddr.protocol = uint32(protocol)
+	keyProtoSrcAddr.saddr = binary.LittleEndian.Uint32(srcAddr.IP.To4())
 
-	var dummyValue uint8 = 0
-	err := d.watchlistMap.Update(key, dummyValue, ebpf.UpdateAny)
+	value := calculateBitVectorForProtoSrcAddrMap(uint32(protocol), srcAddr, allRules)
+	log.Debugf("Bitvector for protoSrcAddr: %x", value)
+	err := d.watchlistMapProtoSrcAddr.Update(keyProtoSrcAddr, value, ebpf.UpdateAny)
 	if err != nil {
 		log.Errorf("failed to insert watchlist entry: %v", err)
 		return err
 	}
+
+	keyDstAddr := struct {
+		prefixlen uint32
+		daddr uint32
+	}{}
+	ones, _ = dstAddr.Mask.Size()
+	keyDstAddr.prefixlen = uint32(ones)
+	keyDstAddr.daddr = binary.LittleEndian.Uint32(dstAddr.IP.To4())
+	value = calculateBitVectorForDstAddr(dstAddr, allRules)
+	log.Debugf("Bitvector for DstAddr: %x", value)
+	err = d.watchlistMapDstAddr.Update(keyDstAddr, value, ebpf.UpdateAny)
+	if err != nil {
+		log.Errorf("failed to insert watchlist entry: %v", err)
+		return err
+	}
+
 	return nil
 }
 

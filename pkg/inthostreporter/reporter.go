@@ -25,7 +25,7 @@ func NewIntHostReporter() *IntHostReporter {
 
 func (itr *IntHostReporter) initWatchlist(watchlist *watchlist.INTWatchlist) error {
 	for _, rule := range watchlist.GetRules() {
-		err := itr.dataPlaneInterface.UpdateWatchlist(rule.GetProtocol(), rule.GetSrcAddr(), rule.GetDstAddr())
+		err := itr.dataPlaneInterface.UpdateWatchlist(rule.GetProtocol(), rule.GetSrcAddr(), rule.GetDstAddr(), watchlist.GetRules())
 		if err != nil {
 			return err
 		}
