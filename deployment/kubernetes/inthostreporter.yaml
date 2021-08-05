@@ -24,7 +24,7 @@ spec:
         - name: aetherregistrysecret
       containers:
         - name: int-host-reporter
-          image: registry.aetherproject.org/tost/int-host-reporter:dev
+          image: registry.aetherproject.org/tost/int-host-reporter
           imagePullPolicy: "Always"
           env:
             - name: COLLECTOR
