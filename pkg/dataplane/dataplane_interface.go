@@ -154,7 +154,7 @@ func (d *DataPlaneInterface) processPerfRecord(record perf.Record) {
 		log.WithFields(log.Fields{
 			"lost": record.LostSamples,
 		}).Warn("Records has been lost because ring buffer is full, consider to increase size?")
-		continue
+		return
 	}
 
 	event := Event{
