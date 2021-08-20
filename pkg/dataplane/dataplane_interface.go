@@ -32,21 +32,21 @@ func (d *DataPlaneInterface) SetEventChannel(ch chan Event) {
 
 func (d *DataPlaneInterface) Init() error {
 	commonPath := common.DefaultMapRoot + "/" + common.DefaultMapPrefix
-	path := commonPath + "/" + common.CalicoWatchlistMapProtoSrcAddr
-	watchlistMap, err := ebpf.LoadPinnedMap(path, nil)
-	if err != nil {
-		return err
-	}
-	d.watchlistMapProtoSrcAddr = watchlistMap
+	//path := commonPath + "/" + common.CalicoWatchlistMapProtoSrcAddr
+	//watchlistMap, err := ebpf.LoadPinnedMap(path, nil)
+	//if err != nil {
+	//	return err
+	//}
+	//d.watchlistMapProtoSrcAddr = watchlistMap
+	//
+	//path = commonPath + "/" + common.CalicoWatchlistMapDstAddr
+	//watchlistMap, err = ebpf.LoadPinnedMap(path, nil)
+	//if err != nil {
+	//	return err
+	//}
+	//d.watchlistMapDstAddr = watchlistMap
 
-	path = commonPath + "/" + common.CalicoWatchlistMapDstAddr
-	watchlistMap, err = ebpf.LoadPinnedMap(path, nil)
-	if err != nil {
-		return err
-	}
-	d.watchlistMapDstAddr = watchlistMap
-
-	path = commonPath + "/" + common.CalicoPerfEventArray
+	path := commonPath + "/" + common.INTEventsMap
 	eventsMap, err := ebpf.LoadPinnedMap(path, nil)
 	if err != nil {
 		return err

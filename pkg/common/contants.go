@@ -8,6 +8,8 @@ const (
 
 	CalicoWatchlistMapDstAddr = "cali_watchlist_dstaddr"
 
+	INTEventsMap = "INT_EVENTS_MAP"
+
 	// DefaultMapRoot is the default path where BPFFS should be mounted
 	DefaultMapRoot = "/sys/fs/bpf"
 

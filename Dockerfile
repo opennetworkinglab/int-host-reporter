@@ -9,7 +9,12 @@ COPY . .
 RUN go get -d -v ./...
 RUN go install -v ./...
 
-FROM bitnami/minideb:buster
+FROM ubuntu:latest
 COPY --from=builder /go/bin/int-host-reporter /usr/local/bin
+
+RUN apt update
+RUN apt install -y iproute2
+
+ADD out.o /opt/out.o
 
 CMD ["int-host-reporter"]

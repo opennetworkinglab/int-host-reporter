@@ -16,6 +16,7 @@ spec:
     spec:
       nodeSelector:
         kubernetes.io/os: linux
+      hostNetwork: true
       tolerations:
         # Make sure container gets scheduled on all nodes.
         - effect: NoSchedule
@@ -24,18 +25,20 @@ spec:
         - name: aetherregistrysecret
       containers:
         - name: int-host-reporter
-          image: registry.aetherproject.org/tost/int-host-reporter
+          image: registry.aetherproject.org/tost/int-host-reporter:generic-dev
           imagePullPolicy: "Always"
           env:
+            - name: DATA_INTERFACE
+              value: "enp0s8"
             - name: COLLECTOR
-              value: "192.168.99.50:30001"
+              value: "192.168.33.50:30001"
             # we use Node IP as switch ID
             - name: NODE_IP
               valueFrom:
                 fieldRef:
                   fieldPath: status.hostIP
           command: ["int-host-reporter"]
-          args: ["--collector", "$(COLLECTOR)", "--switch-id", "$(NODE_IP)", "-f", "/etc/watchlist/watchlist.yaml"]
+          args: ["--data-interface", "$(DATA_INTERFACE)", "--collector", "$(COLLECTOR)", "--switch-id", "$(NODE_IP)", "-f", "/etc/watchlist/watchlist.yaml"]
           volumeMounts:
             - name: bpffs
               mountPath: /sys/fs/bpf
@@ -44,6 +47,8 @@ spec:
               subPath: watchlist.yaml
           securityContext:
             privileged: true
+            capabilities:
+              add: [ "NET_ADMIN","NET_RAW" ]
       volumes:
         - name: bpffs
           hostPath:

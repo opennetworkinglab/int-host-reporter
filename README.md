@@ -4,6 +4,15 @@
 
 `INT Host Reporter` leverages the modified Calico CNI and its eBPF dataplane as a network backend generating data plane reports.
 
+## Building INT Host Reporter
+
+From the main directory:
+
+```bash
+$ ./scripts/compile-bpf.sh
+$ docker build -t registry.aetherproject.org/tost/int-host-reporter:<TAG> .
+```
+
 ## Deployment guide
 
 ### Install the K8s cluster and enable Calico eBPF datapath
