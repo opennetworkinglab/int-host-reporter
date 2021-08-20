@@ -22,6 +22,8 @@ var (
 	INTCollectorServer = flag.String("collector", "", "Address (IP:Port) of the INT collector server.")
 	// FIXME: we provide Switch ID as a command line argument for now; it should be probably configured via ConfigMap.
 	INTSwitchID = flag.String("switch-id", "", "Switch ID used by INT Host Reporter to identify the end host")
+
+	DataInterface = flag.String("data-interface", "", "")
 )
 
 type ReportHandler struct {

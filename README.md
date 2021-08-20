@@ -4,9 +4,18 @@
 
 `INT Host Reporter` leverages the modified Calico CNI and its eBPF dataplane as a network backend generating data plane reports.
 
+## Building INT Host Reporter
+
+From the main directory:
+
+```bash
+$ ./scripts/compile-bpf.sh
+$ docker build -t registry.aetherproject.org/tost/int-host-reporter:<TAG> .
+```
+
 ## Deployment guide
 
-### Install the K8s cluster and enable Calico eBPF datapath
+### Install the K8s cluster
 
 On each K8s node:
 
@@ -72,20 +81,6 @@ type: kubernetes.io/dockerconfigjson
 
 `$ kubectl create -n kube-system -f aether-secret.yaml`
 
-### Install the ONF flavor of Calico CNI
-
-```bash
-$ kubectl apply -f deployment/kubernetes/calico.yaml
-```
-
-### Install calicoctl
-
-Follow [this guide](https://docs.projectcalico.org/getting-started/clis/calicoctl/install) to install `calicoctl`.
-
-### Enable Calico eBPF datapath
-
-Follow [the Enable eBPF datapath guide](https://docs.projectcalico.org/maintenance/ebpf/enabling-bpf).
-
 ### Deploy INT Host Reporter
 
 Edit `deployment/kubernetes/inthostreporter.yaml` and set the `COLLECTOR` variable pointing to the address of the INT collector.
@@ -119,16 +114,6 @@ must point to the K8s NodePort service.
 $ sendp(Ether()/IP(dst="192.168.99.20",ttl=0)/UDP(dport=31584), iface="enp0s8")
 ```
 
-## Conclusions from PoC
-
-- consider adding a `flow-id` field to the INT report to correlate pre-/post-NAT flows. Although the Calico datapath provides 
-  `PreNATDestinationIP` and `PreNATDestinationPort` restoring an original flow may cause that we loose information about a given Pod.
-  For example, there is a problem with a specific Pod, but the INT collector will see a report related to the K8s Service - 
-  given the fact that we can have many (!) Pods under a single K8s Service it may cause troubleshooting really difficult.
-  The ideal situation would be that we provide an original packet (pre- or post-NAT'ed, depending on the trace point) plus 
-  the `flow-id`, so the INT collector can easily correlate packets.
-- The SCTP protocol is not supported by already-existing eBPF datapaths. Neither Calico nor Cilium supports SCTP. 
-  It may be an important restriction as the CU-DU interface uses SCTP.
 
 ## TODOs 
 
