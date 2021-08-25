@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/perf"
+	"github.com/google/gopacket/layers"
 	"github.com/opennetworkinglab/int-host-reporter/pkg/common"
 	"github.com/opennetworkinglab/int-host-reporter/pkg/watchlist"
 	log "github.com/sirupsen/logrus"
@@ -31,6 +32,8 @@ func (d *DataPlaneInterface) SetEventChannel(ch chan Event) {
 }
 
 func (d *DataPlaneInterface) Init() error {
+	layers.RegisterUDPPortLayerType(8472, layers.LayerTypeVXLAN)
+
 	commonPath := common.DefaultMapRoot + "/" + common.DefaultMapPrefix
 	//path := commonPath + "/" + common.CalicoWatchlistMapProtoSrcAddr
 	//watchlistMap, err := ebpf.LoadPinnedMap(path, nil)

@@ -88,7 +88,7 @@ func (dpr *DataPlaneReport) DecodeFromBytes(data []byte, p gopacket.PacketBuilde
 	// 2 bytes of padding
 	ipv4 := binary.LittleEndian.Uint32(data[4:8])
 	dpr.PreNATDestinationIP = make(net.IP, 4)
-	binary.BigEndian.PutUint32(dpr.PreNATDestinationIP, ipv4)
+	binary.LittleEndian.PutUint32(dpr.PreNATDestinationIP, ipv4)
 	dpr.PreNATDestinationPort = binary.BigEndian.Uint16(data[8:12])
 	dpr.IngressPort = binary.LittleEndian.Uint32(data[12:16])
 	dpr.EgressPort = binary.LittleEndian.Uint32(data[16:20])

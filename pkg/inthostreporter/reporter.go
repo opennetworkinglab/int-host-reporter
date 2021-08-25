@@ -1,14 +1,16 @@
 package inthostreporter
 
 import (
-	"strings"
-	"os/exec"
 	"context"
+	"fmt"
 	"github.com/opennetworkinglab/int-host-reporter/pkg/dataplane"
 	"github.com/opennetworkinglab/int-host-reporter/pkg/watchlist"
 	log "github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
+	"os/exec"
+	"strings"
+	"time"
 )
 
 type IntHostReporter struct {
@@ -44,7 +46,7 @@ func (itr *IntHostReporter) initWatchlist(watchlist *watchlist.INTWatchlist) err
 	return nil
 }
 
-func (itr *IntHostReporter) loadBPFProgram(ifName string) {
+func (itr *IntHostReporter) loadBPFProgram(ifName string) error {
 	loaderProg := "tc"
 	ingressArgs := []string{"filter", "replace", "dev", ifName, "ingress",
 		"prio", "1", "handle", "3", "bpf", "da", "obj", "/opt/out.o",
@@ -59,44 +61,51 @@ func (itr *IntHostReporter) loadBPFProgram(ifName string) {
 	_, err := cmd.Output()
 
 	if err != nil {
-		log.Error(err)
+		return err
 	}
 
 	cmd = exec.Command(loaderProg, egressArgs...)
-	stdout, err := cmd.Output()
-	log.Debug(stdout)
+	_, err = cmd.Output()
 	if err != nil {
-		log.Error(err.Error())
+		return err
 	}
+
+	return nil
 }
 
 func (itr *IntHostReporter) configureInterfacesAtStartup() {
 	links, _ := netlink.LinkList()
 	for _, link := range links {
-		log.Debug(link.Attrs().Name)
 		if link.Attrs().Name == *DataInterface ||
 			(strings.Contains(link.Attrs().Name, "lxc") && link.Attrs().Name != "lxc_health") {
-			log.Debug("About to configure ", link.Attrs().Name)
-			itr.loadBPFProgram(link.Attrs().Name)
+			log.Debugf("Trying to load BPF program to %s", link.Attrs().Name)
+			err := itr.loadBPFProgram(link.Attrs().Name)
+			if err != nil {
+				log.Errorf("Failed to load BPF program to %s: %v", link.Attrs().Name, err.Error())
+			} else {
+				log.Debugf("Successfully loaded BPF program to %s", link.Attrs().Name)
+			}
 		}
 	}
 }
 
-func (itr *IntHostReporter) listenAndConfigureInterfaces() {
-	ch := make(chan netlink.LinkUpdate, 100)
-	done := make(chan struct{})
-	if err := netlink.LinkSubscribe(ch, done); err != nil {
-		log.Error("Failed to subscribe to link updates")
-		return
-	}
-
-	for update := range ch {
-		log.Debug("Received update for ", update.Link.Attrs().Name, ", flags ", update.IfInfomsg.Flags)
-		// FIXME: fix problem when loading the BPF program to a new interface
-		//if update.IfInfomsg.Flags&unix.IFF_UP != 0 &&
-		//	(strings.Contains(update.Link.Attrs().Name, "lxc") && update.Link.Attrs().Name != "lxc_health") {
-		//	itr.loadBPFProgram(update.Link.Attrs().Name)
-		//}
+func (itr *IntHostReporter) listenAndConfigureInterfaces(updates chan netlink.LinkUpdate) {
+	for update := range updates {
+		if update.IfInfomsg.Flags&unix.IFF_RUNNING != 0 && update.IfInfomsg.Flags&unix.IFF_UP != 0 &&
+			(strings.Contains(update.Link.Attrs().Name, "lxc") && update.Link.Attrs().Name != "lxc_health") {
+			retries := 3
+			for i := 0; i < retries; i++ {
+				log.Debugf("Trying to load BPF program to %s, retries_left=%d", update.Link.Attrs().Name, retries-i)
+				err := itr.loadBPFProgram(update.Link.Attrs().Name)
+				if err != nil {
+					log.Errorf("Failed to load BPF program to %s: %v", update.Link.Attrs().Name, err.Error())
+					time.Sleep(time.Second+1)
+					continue
+				}
+				log.Debugf("Successfully loaded BPF program to %s", update.Link.Attrs().Name)
+				break
+			}
+		}
 	}
 }
 
@@ -105,7 +114,14 @@ func (itr *IntHostReporter) Start(watchlist *watchlist.INTWatchlist) error {
 	itr.perfReaderCancel = cancel
 
 	itr.configureInterfacesAtStartup()
-	go itr.listenAndConfigureInterfaces()
+
+	updates := make(chan netlink.LinkUpdate, 100)
+	done := make(chan struct{})
+	if err := netlink.LinkSubscribe(updates, done); err != nil {
+		return fmt.Errorf("failed to subscribe to link updates: %v", err)
+	}
+
+	go itr.listenAndConfigureInterfaces(updates)
 
 	err := itr.dataPlaneInterface.Init()
 	if err != nil {
