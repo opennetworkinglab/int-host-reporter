@@ -128,10 +128,11 @@ func (itr *IntHostReporter) Start(watchlist *watchlist.INTWatchlist) error {
 		return err
 	}
 
-	//err = itr.initWatchlist(watchlist)
-	//if err != nil {
-	//	log.Fatalf("Failed to initialize the INT watchlist: %v", err)
-	//}
+	err = itr.initWatchlist(watchlist)
+	if err != nil {
+		log.Fatalf("Failed to initialize the INT watchlist: %v", err)
+	}
+	log.Debug("INT watchlist has been successfully initialized")
 
 	err = itr.reportHandler.Start()
 	if err != nil {

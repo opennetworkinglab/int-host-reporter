@@ -44,7 +44,9 @@ type DataPlaneReport struct {
 	layers.BaseLayer
 	Type                  DataPlaneReportType
 	Reason                uint8
+	PreNATSourceIP        net.IP
 	PreNATDestinationIP   net.IP
+	PreNATSourcePort      uint16
 	PreNATDestinationPort uint16
 	IngressPort           uint32
 	EgressPort            uint32
@@ -54,13 +56,16 @@ type DataPlaneReport struct {
 
 func (dpr *DataPlaneReport) String() string {
 	return fmt.Sprintf("DataPlaneReport(type=%d, reason=%d, "+
+		"PreNATSourceIP=%s, "+
 		"PreNATDestinationIP=%s, "+
+		"PreNATSourcePort=%d, "+
 		"PreNATDestinationPort=%d, "+
 		"IngressPort=%d, "+
 		"EgressPort=%d, "+
 		"IngressTimestamp=%v, "+
 		"EgressTimeStamp=%v)",
-		dpr.Type, dpr.Reason, dpr.PreNATDestinationIP.String(),
+		dpr.Type, dpr.Reason, dpr.PreNATSourceIP.String(),
+		dpr.PreNATDestinationIP.String(), dpr.PreNATSourcePort,
 		dpr.PreNATDestinationPort, dpr.IngressPort, dpr.EgressPort,
 		dpr.IngressTimestamp, dpr.EgressTimestamp)
 }
@@ -86,13 +91,16 @@ func (dpr *DataPlaneReport) DecodeFromBytes(data []byte, p gopacket.PacketBuilde
 	dpr.Type = DataPlaneReportType(data[0])
 	dpr.Reason = uint8(data[1])
 	// 2 bytes of padding
-	ipv4 := binary.LittleEndian.Uint32(data[4:8])
+	srcIPv4 := binary.LittleEndian.Uint32(data[4:8])
+	dpr.PreNATSourceIP = make(net.IP, 4)
+	binary.LittleEndian.PutUint32(dpr.PreNATSourceIP, srcIPv4)
+	dstIPv4 := binary.LittleEndian.Uint32(data[8:12])
 	dpr.PreNATDestinationIP = make(net.IP, 4)
-	binary.LittleEndian.PutUint32(dpr.PreNATDestinationIP, ipv4)
-	dpr.PreNATDestinationPort = binary.BigEndian.Uint16(data[8:12])
-	dpr.IngressPort = binary.LittleEndian.Uint32(data[12:16])
-	dpr.EgressPort = binary.LittleEndian.Uint32(data[16:20])
-	// 4 bytes of padding
+	binary.LittleEndian.PutUint32(dpr.PreNATDestinationIP, dstIPv4)
+	dpr.PreNATSourcePort = binary.BigEndian.Uint16(data[12:14])
+	dpr.PreNATDestinationPort = binary.BigEndian.Uint16(data[14:16])
+	dpr.IngressPort = binary.LittleEndian.Uint32(data[16:20])
+	dpr.EgressPort = binary.LittleEndian.Uint32(data[20:24])
 	dpr.IngressTimestamp = binary.LittleEndian.Uint64(data[24:32])
 	dpr.EgressTimestamp = binary.LittleEndian.Uint64(data[32:40])
 
