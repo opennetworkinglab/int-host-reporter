@@ -13,3 +13,6 @@ rules:
   - protocol: "TCP"
     src-addr: "10.68.235.0/24"
     dst-addr: "10.68.235.0/24"
+  - protocol: "TCP"
+    src-addr: "192.168.33.50/32"
+    dst-addr: "192.168.33.11/32"

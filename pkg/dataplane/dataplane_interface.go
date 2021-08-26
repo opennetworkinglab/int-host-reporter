@@ -35,21 +35,21 @@ func (d *DataPlaneInterface) Init() error {
 	layers.RegisterUDPPortLayerType(8472, layers.LayerTypeVXLAN)
 
 	commonPath := common.DefaultMapRoot + "/" + common.DefaultMapPrefix
-	//path := commonPath + "/" + common.CalicoWatchlistMapProtoSrcAddr
-	//watchlistMap, err := ebpf.LoadPinnedMap(path, nil)
-	//if err != nil {
-	//	return err
-	//}
-	//d.watchlistMapProtoSrcAddr = watchlistMap
-	//
-	//path = commonPath + "/" + common.CalicoWatchlistMapDstAddr
-	//watchlistMap, err = ebpf.LoadPinnedMap(path, nil)
-	//if err != nil {
-	//	return err
-	//}
-	//d.watchlistMapDstAddr = watchlistMap
+	path := commonPath + "/" + common.INTWatchlistProtoSrcAddrMap
+	watchlistMap, err := ebpf.LoadPinnedMap(path, nil)
+	if err != nil {
+		return err
+	}
+	d.watchlistMapProtoSrcAddr = watchlistMap
 
-	path := commonPath + "/" + common.INTEventsMap
+	path = commonPath + "/" + common.INTWatchlistDstAddrMap
+	watchlistMap, err = ebpf.LoadPinnedMap(path, nil)
+	if err != nil {
+		return err
+	}
+	d.watchlistMapDstAddr = watchlistMap
+
+	path = commonPath + "/" + common.INTEventsMap
 	eventsMap, err := ebpf.LoadPinnedMap(path, nil)
 	if err != nil {
 		return err
