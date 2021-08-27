@@ -176,10 +176,11 @@ func (dpe Event) Parse() *PacketMetadata {
 		}
 	}
 
-	if pktMd.DataPlaneReport.PreNATDestinationPort != 0 && !pktMd.DataPlaneReport.PreNATDestinationIP.IsUnspecified() {
-		pktMd.DstPort = pktMd.DataPlaneReport.PreNATDestinationPort
-		copy(pktMd.DstAddr, pktMd.DataPlaneReport.PreNATDestinationIP)
-	}
+	// FIXME: commented out at least for now; as it's not decided yet whether to report pre- or post-NAT'ed tuple to INT collector
+	//if pktMd.DataPlaneReport.PreNATDestinationPort != 0 && !pktMd.DataPlaneReport.PreNATDestinationIP.IsUnspecified() {
+	//	pktMd.DstPort = pktMd.DataPlaneReport.PreNATDestinationPort
+	//	copy(pktMd.DstAddr, pktMd.DataPlaneReport.PreNATDestinationIP)
+	//}
 
 	return pktMd
 }
