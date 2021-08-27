@@ -98,12 +98,10 @@ struct bpf_elf_map SEC("maps") INT_FLOW_FILTER2 = {
     .max_elem	= 65536,
 };
 
-
+// FIXME: for now, we don't apply INT watchlist in the data plane
+//  the code is kept here for the potential use in future
 static __always_inline bool matches_watchlist(__u32 protocol, __be32 saddr, __be32 daddr)
 {
-    // FIXME: temporary
-    return true;
-
     struct watchlist_proto_srcaddr_key first_key = {
         .prefixlen = 64,
         .protocol = protocol,
@@ -216,18 +214,16 @@ int ingress(struct __sk_buff *skb)
 
     bpf_printk("udp_src=%d, udp_dst=%d", bpf_htons(udp->source), bpf_htons(udp->dest));
 
-    if (matches_watchlist(iph->protocol, iph->saddr, iph->daddr)) {
-        struct bridged_metadata bmd = {
-            .ingress_timestamp = bpf_ktime_get_ns(),
-            .ingress_port = skb->ifindex,
-            .pre_nat_ip_src = iph->saddr,
-            .pre_nat_ip_dst = iph->daddr,
-            .pre_nat_dport = udp->dest,
-            .pre_nat_sport = udp->source,
-        };
+    struct bridged_metadata bmd = {
+        .ingress_timestamp = bpf_ktime_get_ns(),
+        .ingress_port = skb->ifindex,
+        .pre_nat_ip_src = iph->saddr,
+        .pre_nat_ip_dst = iph->daddr,
+        .pre_nat_dport = udp->dest,
+        .pre_nat_sport = udp->source,
+    };
 
-        bpf_map_update_elem(&SHARED_MAP, &hash, &bmd, 0);
-    }
+    bpf_map_update_elem(&SHARED_MAP, &hash, &bmd, 0);
 
     return TC_ACT_UNSPEC;
 }
