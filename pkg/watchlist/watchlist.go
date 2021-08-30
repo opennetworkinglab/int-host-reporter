@@ -37,12 +37,12 @@ func (rule INTWatchlistRule) GetProtocol() uint8 {
 	return rule.protocol
 }
 
-func (rule INTWatchlistRule) GetSrcAddr() net.IPNet {
-	return rule.srcAddr
+func (rule INTWatchlistRule) GetSrcAddr() *net.IPNet {
+	return &rule.srcAddr
 }
 
-func (rule INTWatchlistRule) GetDstAddr() net.IPNet {
-	return rule.dstAddr
+func (rule INTWatchlistRule) GetDstAddr() *net.IPNet {
+	return &rule.dstAddr
 }
 
 type INTWatchlist struct {

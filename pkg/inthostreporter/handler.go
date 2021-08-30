@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/opennetworkinglab/int-host-reporter/pkg/dataplane"
 	"github.com/opennetworkinglab/int-host-reporter/pkg/packet"
+	"github.com/opennetworkinglab/int-host-reporter/pkg/watchlist"
 	log "github.com/sirupsen/logrus"
 	"math"
 	"net"
@@ -32,6 +33,7 @@ type ReportHandler struct {
 	// thread-safe
 	udpConn *net.UDPConn
 
+	watchlist          []watchlist.INTWatchlistRule
 	reportsChannel     chan dataplane.Event
 	dataPlaneInterface *dataplane.DataPlaneInterface
 }
@@ -41,6 +43,10 @@ func NewReportHandler(dpi *dataplane.DataPlaneInterface) *ReportHandler {
 	rh.dataPlaneInterface = dpi
 	rh.reportsChannel = make(chan dataplane.Event, rxChannelSize)
 	return rh
+}
+
+func (rh *ReportHandler) SetINTWatchlist(watchlist []watchlist.INTWatchlistRule) {
+	rh.watchlist = watchlist
 }
 
 func getSwitchID() (uint32, error) {
@@ -92,6 +98,46 @@ func (rh *ReportHandler) Start() error {
 	return nil
 }
 
+func (rh *ReportHandler) applyWatchlist(pktMd *dataplane.PacketMetadata) bool {
+	packetLog := log.Fields{
+		"protocol" : pktMd.Protocol,
+		"src-addr" : pktMd.SrcAddr.String(),
+		"dst-addr" : pktMd.DstAddr.String(),
+	}
+
+	log.WithFields(packetLog).Debug("Applying INT watchlist for packet.")
+
+	// apply for post-NAT 5-tuple
+	for _, rule := range rh.watchlist {
+		if pktMd.Protocol == rule.GetProtocol() &&
+			rule.GetSrcAddr().Contains(pktMd.SrcAddr) &&
+			rule.GetDstAddr().Contains(pktMd.DstAddr) {
+				log.WithFields(log.Fields{
+					"packet": packetLog,
+					"rule-matched": rule.String(),
+				}).Debug("Match for post-NAT tuple found")
+				return true
+			}
+	}
+
+	// apply for pre-NAT 5-tuple
+	for _, rule := range rh.watchlist {
+		if pktMd.Protocol == rule.GetProtocol() &&
+			rule.GetSrcAddr().Contains(pktMd.DataPlaneReport.PreNATSourceIP) &&
+			rule.GetDstAddr().Contains(pktMd.DataPlaneReport.PreNATDestinationIP) {
+			log.WithFields(log.Fields{
+				"packet": packetLog,
+				"rule-matched": rule.String(),
+			}).Debug("Match for pre-NAT tuple found")
+			return true
+		}
+	}
+
+	log.WithFields(packetLog).Debug("No INT watchlist match found for packet.")
+
+	return false
+}
+
 func (rh *ReportHandler) rxFn(id int) {
 	hwID := uint8(id)
 	seqNo := uint32(0)
@@ -107,6 +153,10 @@ func (rh *ReportHandler) rxFn(id int) {
 			"Encapsulation":   pktMd.EncapMode,
 		})
 		fields.Debugf("RX worker %d parsed data plane event.", id)
+
+		if !rh.applyWatchlist(pktMd) {
+			continue
+		}
 
 		if seqNo >= math.MaxUint32 {
 			seqNo = 0

@@ -214,13 +214,34 @@ int ingress(struct __sk_buff *skb)
 
     bpf_printk("udp_src=%d, udp_dst=%d", bpf_htons(udp->source), bpf_htons(udp->dest));
 
+    __u32 ip_src, ip_dst;
+    __u16 l4_sport, l4_dport;
+    if (udp->dest == bpf_htons(8472)) {
+        struct iphdr *inner_ip = data + sizeof(*eth) + sizeof(*iph) + sizeof(*udp) + 8 + sizeof(*eth);
+        if (data + sizeof(*eth) + sizeof(*iph) + sizeof(*udp) + 8 + sizeof(*eth) + sizeof(*iph) > data_end)
+                return TC_ACT_SHOT;
+        ip_src = inner_ip->saddr;
+        ip_dst = inner_ip->daddr;
+
+        struct udphdr *inner_udp = data + sizeof(*eth) + sizeof(*iph) + sizeof(*udp) + 8 + sizeof(*eth) + sizeof(*iph);
+        if (data + sizeof(*eth) + sizeof(*iph) + sizeof(*udp) + 8 + sizeof(*eth) + sizeof(*iph) + sizeof(*inner_udp) > data_end)
+                return TC_ACT_SHOT;
+        l4_sport = inner_udp->source;
+        l4_dport = inner_udp->dest;
+    } else {
+        ip_src = iph->saddr;
+        ip_dst = iph->daddr;
+        l4_sport = udp->source;
+        l4_dport = udp->dest;
+    }
+
     struct bridged_metadata bmd = {
         .ingress_timestamp = bpf_ktime_get_ns(),
         .ingress_port = skb->ifindex,
-        .pre_nat_ip_src = iph->saddr,
-        .pre_nat_ip_dst = iph->daddr,
-        .pre_nat_dport = udp->dest,
-        .pre_nat_sport = udp->source,
+        .pre_nat_ip_src = ip_src,
+        .pre_nat_ip_dst = ip_dst,
+        .pre_nat_dport = l4_dport,
+        .pre_nat_sport = l4_sport,
     };
 
     bpf_map_update_elem(&SHARED_MAP, &hash, &bmd, 0);

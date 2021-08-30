@@ -21,29 +21,23 @@ type IntHostReporter struct {
 	dataPlaneInterface *dataplane.DataPlaneInterface
 }
 
-func NewIntHostReporter() *IntHostReporter {
+func NewIntHostReporter(watchlist *watchlist.INTWatchlist) *IntHostReporter {
 	itr := &IntHostReporter{}
 	itr.ctx = context.Background()
 	itr.dataPlaneInterface = dataplane.NewDataPlaneInterface()
 	itr.reportHandler = NewReportHandler(itr.dataPlaneInterface)
+	itr.initWatchlist(watchlist)
 	return itr
 }
 
-func (itr *IntHostReporter) initWatchlist(watchlist *watchlist.INTWatchlist) error {
-	for _, rule := range watchlist.GetRules() {
-		err := itr.dataPlaneInterface.UpdateWatchlist(rule.GetProtocol(), rule.GetSrcAddr(), rule.GetDstAddr(), watchlist.GetRules())
-		if err != nil {
-			return err
-		}
-	}
-
+func (itr *IntHostReporter) initWatchlist(watchlist *watchlist.INTWatchlist) {
 	if len(watchlist.GetRules()) > 0 {
 		log.WithFields(log.Fields{
 			"rules": watchlist.GetRules(),
 		}).Debug("Starting with the pre-configured INT watchlist")
 	}
 
-	return nil
+	itr.reportHandler.SetINTWatchlist(watchlist.GetRules())
 }
 
 func (itr *IntHostReporter) loadBPFProgram(ifName string) error {
@@ -109,7 +103,7 @@ func (itr *IntHostReporter) listenAndConfigureInterfaces(updates chan netlink.Li
 	}
 }
 
-func (itr *IntHostReporter) Start(watchlist *watchlist.INTWatchlist) error {
+func (itr *IntHostReporter) Start() error {
 	dataPlaneInterfaceCtx, cancel := context.WithCancel(itr.ctx)
 	itr.perfReaderCancel = cancel
 
@@ -127,12 +121,6 @@ func (itr *IntHostReporter) Start(watchlist *watchlist.INTWatchlist) error {
 	if err != nil {
 		return err
 	}
-
-	err = itr.initWatchlist(watchlist)
-	if err != nil {
-		log.Fatalf("Failed to initialize the INT watchlist: %v", err)
-	}
-	log.Debug("INT watchlist has been successfully initialized")
 
 	err = itr.reportHandler.Start()
 	if err != nil {
