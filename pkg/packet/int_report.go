@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	"github.com/opennetworkinglab/int-host-reporter/pkg/common"
 	"github.com/opennetworkinglab/int-host-reporter/pkg/dataplane"
 	log "github.com/sirupsen/logrus"
+	"net"
 )
 
 const (
@@ -25,27 +27,6 @@ const (
 	OffsetDestinationPortVXLAN   = 86
 	OffsetDestinationIPNoEncap   = 30
 	OffsetDestinationPortNoEncap = 36
-)
-
-const (
-	// Common drop reasons
-	DropReasonUnknown = 0
-	DropReasonIPVersionInvalid = 25
-	DropReasonIPTTLZero = 26
-	DropReasonIPIHLInvalid = 30
-	DropReasonIPInvalidChecksum = 31
-	DropReasonRoutingMiss = 29
-	DropReasonPortVLANMappingMiss = 55
-	DropReasonTrafficManager = 71
-	DropReasonACLDeny = 80
-	DropReasonBridginMiss = 89
-
-	// Calico-specific drop reasons
-	DropReasonEncapFail = 180
-	DropReasonDecapFail = 181
-	DropReasonChecksumFail = 182
-	DropReasonIPOptions = 183
-	DropReasonUnauthSource = 184
 )
 
 var (
@@ -196,30 +177,30 @@ func dropReasonConvertFromDatapathToINT(datapathCode uint8) uint8 {
 		// unknown reason has the same code.
 		return datapathCode
 	case 207:
-		return DropReasonChecksumFail
+		return common.DropReasonChecksumFail
 	case 239:
-		return DropReasonEncapFail
+		return common.DropReasonEncapFail
 	case 223:
-		return DropReasonDecapFail
+		return common.DropReasonDecapFail
 	case 235:
-		return DropReasonIPOptions
+		return common.DropReasonIPOptions
 	case 236:
-		return DropReasonIPIHLInvalid
+		return common.DropReasonIPIHLInvalid
 	case 237:
-		return DropReasonUnauthSource
+		return common.DropReasonUnauthSource
 	case 240:
-		return DropReasonIPTTLZero
+		return common.DropReasonIPTTLZero
 	case 241:
-		return DropReasonACLDeny
+		return common.DropReasonACLDeny
 	default:
 		log.WithFields(log.Fields{
 			"code": datapathCode,
 		}).Warning("unknown drop reason reported by datapath. Returning unknown reason.")
-		return DropReasonUnknown
+		return common.DropReasonUnknown
 	}
 }
 
-func getINTFixedHeader(pktMd *dataplane.PacketMetadata, hwID uint8, seqNo uint32) INTReportFixedHeader {
+func getINTFixedHeader(pktMd dataplane.PacketMetadata, hwID uint8, seqNo uint32) INTReportFixedHeader {
 	return INTReportFixedHeader{
 		Version:                   0,
 		NProto:                    0,
@@ -232,7 +213,7 @@ func getINTFixedHeader(pktMd *dataplane.PacketMetadata, hwID uint8, seqNo uint32
 	}
 }
 
-func getINTCommonHeader(pktMd *dataplane.PacketMetadata, switchID uint32) INTCommonReportHeader {
+func getINTCommonHeader(pktMd dataplane.PacketMetadata, switchID uint32) INTCommonReportHeader {
 	return INTCommonReportHeader{
 		SwitchID:    switchID,
 		IngressPort: uint16(pktMd.DataPlaneReport.IngressPort),
@@ -241,7 +222,75 @@ func getINTCommonHeader(pktMd *dataplane.PacketMetadata, switchID uint32) INTCom
 	}
 }
 
-func getINTPayload(pktMd *dataplane.PacketMetadata) gopacket.Payload {
+func constructPayloadFromFiveTuple(srcAddr, dstAddr net.IP, protocol uint8, srcPort, dstPort uint16) ([]byte, error) {
+	// Set up buffer and options for serialization.
+	buf := gopacket.NewSerializeBuffer()
+	opts := gopacket.SerializeOptions{
+		FixLengths:       true,
+		ComputeChecksums: true,
+	}
+
+	eth := layers.Ethernet{
+		// dummy Eth addresses; INT collector should not care about L2
+		SrcMAC:       net.HardwareAddr{0x01, 0x02, 0x03, 0x04, 0x05, 0x06},
+		DstMAC:       net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
+		EthernetType: layers.EthernetTypeIPv4,
+	}
+
+	ipv4 := &layers.IPv4{
+		Version: 4,
+		TTL: 64,
+		Protocol:   layers.IPProtocol(protocol),
+		SrcIP:      srcAddr,
+		DstIP:      dstAddr,
+	}
+
+	var l4 gopacket.SerializableLayer
+	switch protocol {
+	case 6:
+		udp := &layers.UDP{
+			SrcPort:   layers.UDPPort(srcPort),
+			DstPort:   layers.UDPPort(dstPort),
+		}
+		udp.SetNetworkLayerForChecksum(ipv4)
+		l4 = udp
+	case 17:
+		tcp := &layers.TCP{
+			SrcPort:    layers.TCPPort(srcPort),
+			DstPort:    layers.TCPPort(dstPort),
+		}
+		tcp.SetNetworkLayerForChecksum(ipv4)
+		l4 = tcp
+	default:
+		return []byte{}, fmt.Errorf("protocol not supported")
+	}
+
+	dummyPayload := gopacket.Payload{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}
+	err := gopacket.SerializeLayers(buf, opts, &eth, ipv4, l4, &dummyPayload)
+	if err != nil {
+		return []byte{}, err
+	}
+
+	return buf.Bytes(), nil
+}
+
+func getINTPayload(pktMd dataplane.PacketMetadata) gopacket.Payload {
+	if len(pktMd.DataPlaneReport.Payload) == 0 {
+		payload, err := constructPayloadFromFiveTuple(pktMd.SrcAddr,
+			pktMd.DstAddr, pktMd.Protocol, pktMd.SrcPort, pktMd.DstPort)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"srcAddr":  pktMd.SrcAddr.String(),
+				"dstAddr":  pktMd.DstAddr.String(),
+				"protocol": pktMd.Protocol,
+				"srcPort":  pktMd.SrcPort,
+				"dstPort":  pktMd.DstPort,
+				"error":    err.Error(),
+			}).Error("failed to construct INT payload for 5-tuple")
+		}
+		pktMd.DataPlaneReport.Payload = payload
+	}
+
 	payload := gopacket.Payload(pktMd.DataPlaneReport.LayerPayload())
 	if pktMd.EncapMode == "vxlan" {
 		// strip VXLAN out - our design choice is to report only the inner headers
@@ -259,7 +308,7 @@ func getINTPayload(pktMd *dataplane.PacketMetadata) gopacket.Payload {
 	return payload
 }
 
-func buildINTFlowReport(pktMd *dataplane.PacketMetadata, switchID uint32, hwID uint8, seqNo uint32) ([]byte, error) {
+func buildINTFlowReport(pktMd dataplane.PacketMetadata, switchID uint32, hwID uint8, seqNo uint32) ([]byte, error) {
 	fixedReport := getINTFixedHeader(pktMd, hwID, seqNo)
 	fixedReport.NProto = NProtoTelemetrySwitchLocal
 	fixedReport.TrackedFlowAssociation = true
@@ -290,7 +339,7 @@ func buildINTFlowReport(pktMd *dataplane.PacketMetadata, switchID uint32, hwID u
 	return buf.Bytes(), nil
 }
 
-func buildINTDropReport(pktMd *dataplane.PacketMetadata, switchID uint32, hwID uint8, seqNo uint32) ([]byte, error) {
+func buildINTDropReport(pktMd dataplane.PacketMetadata, switchID uint32, hwID uint8, seqNo uint32) ([]byte, error) {
 	fixedReport := getINTFixedHeader(pktMd, hwID, seqNo)
 	fixedReport.Dropped = true
 	fixedReport.NProto = NProtoTelemetryDrop
@@ -321,7 +370,7 @@ func buildINTDropReport(pktMd *dataplane.PacketMetadata, switchID uint32, hwID u
 	return buf.Bytes(), nil
 }
 
-func BuildINTReport(pktMd *dataplane.PacketMetadata, switchID uint32, hwID uint8, seqNo uint32) (data []byte, err error) {
+func BuildINTReport(pktMd dataplane.PacketMetadata, switchID uint32, hwID uint8, seqNo uint32) (data []byte, err error) {
 	switch pktMd.DataPlaneReport.Type {
 	case dataplane.TraceReport:
 		data, err = buildINTFlowReport(pktMd, switchID, hwID, seqNo)

@@ -127,6 +127,8 @@ func (itr *IntHostReporter) Start() error {
 		return err
 	}
 
+	go itr.dataPlaneInterface.DetectPacketDrops()
+
 	// Blocking
 	err = itr.dataPlaneInterface.Start(dataPlaneInterfaceCtx)
 	if err != nil {
