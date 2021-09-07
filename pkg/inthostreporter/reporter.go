@@ -2,15 +2,17 @@ package inthostreporter
 
 import (
 	"context"
-	"fmt"
 	"github.com/opennetworkinglab/int-host-reporter/pkg/dataplane"
 	"github.com/opennetworkinglab/int-host-reporter/pkg/watchlist"
 	log "github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
-	"golang.org/x/sys/unix"
 	"os/exec"
 	"strings"
 	"time"
+)
+
+const (
+	INTProgramHandle = 3
 )
 
 type IntHostReporter struct {
@@ -67,7 +69,7 @@ func (itr *IntHostReporter) loadBPFProgram(ifName string) error {
 	return nil
 }
 
-func (itr *IntHostReporter) configureInterfacesAtStartup() {
+func (itr *IntHostReporter) attachINTProgramsAtStartup() {
 	links, _ := netlink.LinkList()
 	for _, link := range links {
 		if link.Attrs().Name == *DataInterface ||
@@ -83,23 +85,41 @@ func (itr *IntHostReporter) configureInterfacesAtStartup() {
 	}
 }
 
-func (itr *IntHostReporter) listenAndConfigureInterfaces(updates chan netlink.LinkUpdate) {
-	for update := range updates {
-		if update.IfInfomsg.Flags&unix.IFF_RUNNING != 0 && update.IfInfomsg.Flags&unix.IFF_UP != 0 &&
-			(strings.Contains(update.Link.Attrs().Name, "lxc") && update.Link.Attrs().Name != "lxc_health") {
-			retries := 3
-			for i := 0; i < retries; i++ {
-				log.Debugf("Trying to load BPF program to %s, retries_left=%d", update.Link.Attrs().Name, retries-i)
-				err := itr.loadBPFProgram(update.Link.Attrs().Name)
-				if err != nil {
-					log.Errorf("Failed to load BPF program to %s: %v", update.Link.Attrs().Name, err.Error())
-					time.Sleep(time.Second+1)
-					continue
+func interfaceHasINTProgram(link netlink.Link, handle uint32) bool {
+	filters, err := netlink.FilterList(link, handle)
+	if err != nil {
+		log.Error("failed to get filter list for link %v: %v", link.Attrs().Name, err.Error())
+		return false
+	}
+	for _, f := range filters {
+		if f.Attrs().Handle == INTProgramHandle {
+			return true
+		}
+	}
+
+	return false
+}
+
+// This function will (re-)load INT programs in two cases:
+// 1) when a new container's interface is created
+// 2) when a CNI will clear INT programs from a container's interface
+func (itr *IntHostReporter) reloadINTProgramsIfNeeded() {
+	for {
+		links, _ := netlink.LinkList()
+		for _, link := range links {
+			if link.Attrs().Name == *DataInterface ||
+				(strings.Contains(link.Attrs().Name, "lxc") && link.Attrs().Name != "lxc_health") {
+				if !interfaceHasINTProgram(link, netlink.HANDLE_MIN_INGRESS) ||
+					!interfaceHasINTProgram(link, netlink.HANDLE_MIN_EGRESS) {
+					log.Debugf("Re-loading INT eBPF program to interface %v", link.Attrs().Name)
+					err := itr.loadBPFProgram(link.Attrs().Name)
+					if err != nil {
+						log.Errorf("Failed to load BPF program to %s: %v", link.Attrs().Name, err.Error())
+					}
 				}
-				log.Debugf("Successfully loaded BPF program to %s", update.Link.Attrs().Name)
-				break
 			}
 		}
+		time.Sleep(time.Second)
 	}
 }
 
@@ -107,15 +127,8 @@ func (itr *IntHostReporter) Start() error {
 	dataPlaneInterfaceCtx, cancel := context.WithCancel(itr.ctx)
 	itr.perfReaderCancel = cancel
 
-	itr.configureInterfacesAtStartup()
-
-	updates := make(chan netlink.LinkUpdate, 100)
-	done := make(chan struct{})
-	if err := netlink.LinkSubscribe(updates, done); err != nil {
-		return fmt.Errorf("failed to subscribe to link updates: %v", err)
-	}
-
-	go itr.listenAndConfigureInterfaces(updates)
+	itr.attachINTProgramsAtStartup()
+	go itr.reloadINTProgramsIfNeeded()
 
 	err := itr.dataPlaneInterface.Init()
 	if err != nil {
