@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/perf"
 	"github.com/google/gopacket/layers"
@@ -11,23 +12,38 @@ import (
 	"github.com/opennetworkinglab/int-host-reporter/pkg/watchlist"
 	log "github.com/sirupsen/logrus"
 	"net"
+	"time"
 )
 
 type DataPlaneInterface struct {
-	eventsChannel   chan Event
+	eventsChannel chan PacketMetadata
 
-	watchlistMapProtoSrcAddr    *ebpf.Map
-	watchlistMapDstAddr 		*ebpf.Map
+	watchlistMapProtoSrcAddr *ebpf.Map
+	watchlistMapDstAddr      *ebpf.Map
+
+	ingressSeqNumMap *ebpf.Map
+	egressSeqNumMap  *ebpf.Map
 
 	perfEventArray  *ebpf.Map
 	dataPlaneReader *perf.Reader
+}
+
+type IngressSeqNumValue struct {
+	IngressTimestamp uint64
+	IngressPort      uint32
+	SeqNum           uint32
+	SrcIP            uint32
+	DstIP            uint32
+	IPProtocol       uint32
+	SourcePort       uint16
+	DestPort         uint16
 }
 
 func NewDataPlaneInterface() *DataPlaneInterface {
 	return &DataPlaneInterface{}
 }
 
-func (d *DataPlaneInterface) SetEventChannel(ch chan Event) {
+func (d *DataPlaneInterface) SetEventChannel(ch chan PacketMetadata) {
 	d.eventsChannel = ch
 }
 
@@ -48,6 +64,20 @@ func (d *DataPlaneInterface) Init() error {
 		return err
 	}
 	d.watchlistMapDstAddr = watchlistMap
+
+	path = commonPath + "/" + common.INTIngressSeqNumMap
+	ingressSeqNumMap, err := ebpf.LoadPinnedMap(path, nil)
+	if err != nil {
+		return err
+	}
+	d.ingressSeqNumMap = ingressSeqNumMap
+
+	path = commonPath + "/" + common.INTEgressSeqNumMap
+	egressSeqNumMap, err := ebpf.LoadPinnedMap(path, nil)
+	if err != nil {
+		return err
+	}
+	d.egressSeqNumMap = egressSeqNumMap
 
 	path = commonPath + "/" + common.INTEventsMap
 	eventsMap, err := ebpf.LoadPinnedMap(path, nil)
@@ -76,13 +106,67 @@ func (d *DataPlaneInterface) Start(stopCtx context.Context) error {
 	for {
 		record, err := d.dataPlaneReader.Read()
 		switch {
-		case err != nil: {
-			log.Warn("Error received while reading from perf buffer")
-			// TODO (tomasz): log error here
-			continue
-		}
+		case err != nil:
+			{
+				log.Warn("Error received while reading from perf buffer")
+				// TODO (tomasz): log error here
+				continue
+			}
 		}
 		d.processPerfRecord(record)
+	}
+}
+
+func (d *DataPlaneInterface) seenByEgress(flowHash uint32, ingressValue IngressSeqNumValue) bool {
+	var egressValue uint16
+	err := d.egressSeqNumMap.Lookup(&flowHash, &egressValue)
+	if err != nil && errors.Is(err, ebpf.ErrKeyNotExist) {
+		return false
+	}
+
+	diff := ingressValue.SeqNum - uint32(egressValue)
+	if diff > 0 {
+		log.Debugf("Sequence number gap (diff=%v, ingressSeqNum=%v, EgressSeqNum=%v) detected for flow %x",
+			diff, ingressValue.SeqNum, egressValue, flowHash)
+		return false
+	}
+
+	return true
+}
+
+func (d *DataPlaneInterface) DetectPacketDrops() {
+	log.Debug("Starting packet drop detection process..")
+	for {
+		var key uint32
+		var value IngressSeqNumValue
+		iter := d.ingressSeqNumMap.Iterate()
+		for iter.Next(&key, &value) {
+			if !d.seenByEgress(key, value) {
+				log.Debugf("Potential packet drop detected for flow %x", key)
+				pktMd := PacketMetadata{
+					DataPlaneReport: &DataPlaneReport{
+						Type:                  DropReport,
+						Reason:                common.DropReasonUnknown,
+						PreNATSourceIP:        net.IPv4zero,
+						PreNATDestinationIP:   net.IPv4zero,
+						PreNATSourcePort:      0,
+						PreNATDestinationPort: 0,
+						IngressPort:           value.IngressPort,
+						EgressPort:            0,
+						IngressTimestamp:      value.IngressTimestamp,
+						EgressTimestamp:       0,
+					},
+					EncapMode: "",
+					DstAddr:   common.ToNetIP(value.DstIP),
+					SrcAddr:   common.ToNetIP(value.SrcIP),
+					Protocol:  uint8(value.IPProtocol),
+					DstPort:   value.DestPort,
+					SrcPort:   value.SourcePort,
+				}
+				d.eventsChannel <- pktMd
+			}
+		}
+		time.Sleep(time.Second)
 	}
 }
 
@@ -112,8 +196,8 @@ func calculateBitVectorForDstAddr(dstAddr net.IPNet, allRules []watchlist.INTWat
 func (d *DataPlaneInterface) UpdateWatchlist(protocol uint8, srcAddr net.IPNet, dstAddr net.IPNet, allRules []watchlist.INTWatchlistRule) error {
 	keyProtoSrcAddr := struct {
 		prefixlen uint32
-		protocol uint32
-		saddr uint32
+		protocol  uint32
+		saddr     uint32
 	}{}
 	ones, _ := srcAddr.Mask.Size()
 	keyProtoSrcAddr.prefixlen = 32 + uint32(ones)
@@ -130,7 +214,7 @@ func (d *DataPlaneInterface) UpdateWatchlist(protocol uint8, srcAddr net.IPNet, 
 
 	keyDstAddr := struct {
 		prefixlen uint32
-		daddr uint32
+		daddr     uint32
 	}{}
 	ones, _ = dstAddr.Mask.Size()
 	keyDstAddr.prefixlen = uint32(ones)
@@ -148,9 +232,9 @@ func (d *DataPlaneInterface) UpdateWatchlist(protocol uint8, srcAddr net.IPNet, 
 
 func (d *DataPlaneInterface) processPerfRecord(record perf.Record) {
 	log.WithFields(log.Fields{
-		"CPU": record.CPU,
+		"CPU":            record.CPU,
 		"HasLostSamples": record.LostSamples > 0,
-		"DataSize": len(record.RawSample),
+		"DataSize":       len(record.RawSample),
 	}).Trace("perf event read")
 
 	if record.LostSamples > 0 {
@@ -162,12 +246,12 @@ func (d *DataPlaneInterface) processPerfRecord(record perf.Record) {
 
 	event := Event{
 		Data: record.RawSample,
-		CPU: record.CPU,
+		CPU:  record.CPU,
 	}
+	pktMd := event.Parse()
 	select {
-	case d.eventsChannel <- event:
+	case d.eventsChannel <- *pktMd:
 	default:
 		log.Warn("Dropped event because events channel is full or closed")
 	}
 }
-
