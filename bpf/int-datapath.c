@@ -16,6 +16,7 @@ struct bridged_metadata {
     __u32 pre_nat_ip_src;
     __u16 pre_nat_sport;
     __u16 pre_nat_dport;
+    __u16 seq_no;
 };
 
 struct dp_event {
@@ -48,6 +49,17 @@ struct flow_filter_value {
     __u32 eg_port;
     __u32 flow_hash;
     __u32 hop_latency;
+};
+
+struct seqno_ingress {
+    __u64 ingress_timestamp;
+    __u32 ingress_port;
+    __u32 seq_no;
+    __u32 ip_src;
+    __u32 ip_dst;
+    __u32 protocol;
+    __u16 sport;
+    __u16 dport;
 };
 
 struct bpf_elf_map SEC("maps") SHARED_MAP = {
@@ -96,6 +108,22 @@ struct bpf_elf_map SEC("maps") INT_FLOW_FILTER2 = {
     .size_value	= sizeof(struct flow_filter_value),
     .pinning	= PIN_GLOBAL_NS,
     .max_elem	= 65536,
+};
+
+struct bpf_elf_map SEC("maps") SEQ_NO_INGRESS = {
+    .type = BPF_MAP_TYPE_HASH,
+    .size_key	= sizeof(__u32),  // flow hash
+    .size_value	= sizeof(struct seqno_ingress),  // sequence number
+    .pinning	= PIN_GLOBAL_NS,
+    .max_elem	= 511000,
+};
+
+struct bpf_elf_map SEC("maps") EGRESS_LAST_SEEN_SEQNO = {
+    .type = BPF_MAP_TYPE_HASH,
+    .size_key	= sizeof(__u32),  // flow hash
+    .size_value	= sizeof(__u16),  // sequence number
+    .pinning	= PIN_GLOBAL_NS,
+    .max_elem	= 511000,
 };
 
 // FIXME: for now, we don't apply INT watchlist in the data plane
@@ -188,6 +216,7 @@ static __always_inline bool filter_allow(__u32 ig_port, __u32 eg_port, __u32 flo
 SEC("classifier/ingress")
 int ingress(struct __sk_buff *skb)
 {
+    __u64 ingress_timestamp = bpf_ktime_get_ns();
     __u32 hash = bpf_get_hash_recalc(skb);
     bpf_printk("Ingress, skbptr=%p, port=%d, hash=%x", skb, skb->ifindex, hash);
 
@@ -198,50 +227,106 @@ int ingress(struct __sk_buff *skb)
     if (data + sizeof(*eth) > data_end)
         return TC_ACT_SHOT;
 
-    bpf_printk("eth_type=%x", bpf_htons(eth->h_proto));
+    if (bpf_htons(eth->h_proto) != 0x0800) {
+        return TC_ACT_UNSPEC;
+    }
 
     struct iphdr *iph = data + sizeof(*eth);
 
     if (data + sizeof(*eth) + sizeof(*iph) > data_end)
         return TC_ACT_SHOT;
 
-    bpf_printk("ip_src=%x, ip_dst=%x", bpf_htonl(iph->saddr), bpf_htonl(iph->daddr));
+    // FIXME: we don't support ICMP traffic yet
+    if (iph->protocol == 0x1) {
+        return TC_ACT_UNSPEC;
+    }
 
     // we parse UDP, because we are only interested in src & dst ports of L4
     struct udphdr *udp = data + sizeof(*eth) + sizeof(*iph);
     if (data + sizeof(*eth) + sizeof(*iph) + sizeof(*udp) > data_end)
         return TC_ACT_SHOT;
 
-    bpf_printk("udp_src=%d, udp_dst=%d", bpf_htons(udp->source), bpf_htons(udp->dest));
+    // only for the PoC purpose; don't report system flows
+    if (udp->source == bpf_htons(6443) || udp->dest == bpf_htons(6443) ||
+        udp->source == bpf_htons(8181) || udp->dest == bpf_htons(8181) ||
+        bpf_htons(udp->source) == 4240 || bpf_htons(udp->dest) == 4240) {
+        return TC_ACT_UNSPEC;
+    }
+
+    bpf_printk("ip_src=%x, ip_dst=%x, proto=%d", bpf_htonl(iph->saddr), bpf_htonl(iph->daddr), iph->protocol);
+    bpf_printk("l4_sport=%d, l4_dport=%d", bpf_htons(udp->source), bpf_htons(udp->dest));
 
     __u32 ip_src, ip_dst;
+    __u32 ip_protocol;
     __u16 l4_sport, l4_dport;
-    if (udp->dest == bpf_htons(8472)) {
-        struct iphdr *inner_ip = data + sizeof(*eth) + sizeof(*iph) + sizeof(*udp) + 8 + sizeof(*eth);
+    if (bpf_htons(udp->dest) == 8472) {
+        struct iphdr *inner_ip = data + sizeof(*eth) + sizeof(*iph) + sizeof(*udp) +
+                        8 + sizeof(*eth);
         if (data + sizeof(*eth) + sizeof(*iph) + sizeof(*udp) + 8 + sizeof(*eth) + sizeof(*iph) > data_end)
                 return TC_ACT_SHOT;
+
+        struct ethhdr *inner_eth = data + sizeof(*eth) + sizeof(*iph) + sizeof(*udp) + 8;
+        if (bpf_ntohs(inner_eth->h_proto) == 0x86dd || inner_ip->protocol == 0x1) {
+            return TC_ACT_UNSPEC;
+        }
         ip_src = inner_ip->saddr;
         ip_dst = inner_ip->daddr;
-
+        ip_protocol = inner_ip->protocol;
         struct udphdr *inner_udp = data + sizeof(*eth) + sizeof(*iph) + sizeof(*udp) + 8 + sizeof(*eth) + sizeof(*iph);
         if (data + sizeof(*eth) + sizeof(*iph) + sizeof(*udp) + 8 + sizeof(*eth) + sizeof(*iph) + sizeof(*inner_udp) > data_end)
                 return TC_ACT_SHOT;
         l4_sport = inner_udp->source;
         l4_dport = inner_udp->dest;
+
+        // only for the PoC purpose; don't report system flows
+        if (bpf_ntohs(inner_udp->source) == 8080 || bpf_ntohs(inner_udp->dest) == 8080 ||
+            bpf_ntohs(inner_udp->source) == 4240 || bpf_ntohs(inner_udp->dest) == 4240) {
+            return TC_ACT_UNSPEC;
+        }
     } else {
         ip_src = iph->saddr;
         ip_dst = iph->daddr;
+        ip_protocol = iph->protocol;
         l4_sport = udp->source;
         l4_dport = udp->dest;
     }
 
+    bpf_printk("ip_src=%x, ip_dst=%x, proto=%d", bpf_htonl(ip_src), bpf_htonl(ip_dst), ip_protocol);
+    bpf_printk("l4_sport=%d, l4_dport=%d", bpf_htons(l4_sport), bpf_htons(l4_dport));
+
+    __u16 flow_seqnum = 1;
+    struct seqno_ingress *val = bpf_map_lookup_elem(&SEQ_NO_INGRESS, &hash);
+    if (!val) {
+        struct seqno_ingress new_value = { };
+        new_value.seq_no = flow_seqnum;
+        new_value.ingress_timestamp = ingress_timestamp;
+        new_value.ingress_port = skb->ifindex;
+        new_value.ip_src = bpf_ntohl(ip_src);
+        new_value.ip_dst = bpf_ntohl(ip_dst);
+        new_value.protocol = ip_protocol;
+        new_value.sport = bpf_ntohs(l4_sport);
+        new_value.dport = bpf_ntohs(l4_dport);
+        bpf_map_update_elem(&SEQ_NO_INGRESS, &hash, &new_value, 0);
+    } else {
+        val->seq_no += 1;
+        val->ingress_timestamp = ingress_timestamp;
+        val->ingress_port = skb->ifindex;
+        val->ip_src = bpf_ntohl(ip_src);
+        val->ip_dst = bpf_ntohl(ip_dst);
+        val->protocol = ip_protocol;
+        val->sport = bpf_ntohs(l4_sport);
+        val->dport = bpf_ntohs(l4_dport);
+        flow_seqnum = val->seq_no;
+    }
+
     struct bridged_metadata bmd = {
-        .ingress_timestamp = bpf_ktime_get_ns(),
+        .ingress_timestamp = ingress_timestamp,
         .ingress_port = skb->ifindex,
         .pre_nat_ip_src = ip_src,
         .pre_nat_ip_dst = ip_dst,
         .pre_nat_dport = l4_dport,
         .pre_nat_sport = l4_sport,
+        .seq_no = flow_seqnum,
     };
 
     bpf_map_update_elem(&SHARED_MAP, &hash, &bmd, 0);
@@ -276,7 +361,7 @@ int egress(struct __sk_buff *skb)
     if (data + sizeof(*eth) + sizeof(*iph) + sizeof(*udp) > data_end)
         return TC_ACT_SHOT;
 
-    bpf_printk("udp_src=%d, udp_dst=%d", bpf_htons(udp->source), bpf_htons(udp->dest));
+    bpf_printk("l4_sport=%d, l4_dport=%d", bpf_htons(udp->source), bpf_htons(udp->dest));
 
     struct bridged_metadata *b = bpf_map_lookup_elem(&SHARED_MAP, &hash);
     if (!b) {
@@ -286,8 +371,33 @@ int egress(struct __sk_buff *skb)
                b->ingress_port);
 
     __u32 hop_latency = egress_timestamp-b->ingress_timestamp;
-    bpf_printk("Hop latency=%llu, egress_port=%d, pre_nat_ip=%x", hop_latency, skb->ifindex,
-                bpf_htonl(b->pre_nat_ip_dst));
+    bpf_printk("Hop latency=%llu, egress_port=%d, seq_no=%u", hop_latency, skb->ifindex,
+                b->seq_no);
+
+    bool drop_detected = false;
+    __u16 *last_seen_seqnum = bpf_map_lookup_elem(&EGRESS_LAST_SEEN_SEQNO, &hash);
+    if (!last_seen_seqnum) {
+        // first time we see this flow at egress
+        bpf_map_update_elem(&EGRESS_LAST_SEEN_SEQNO, &hash, &(b->seq_no), 0);
+    } else {
+        if (b->seq_no - *last_seen_seqnum > 1) {
+            drop_detected = true;
+        }
+        *last_seen_seqnum = b->seq_no;
+    }
+
+    if (drop_detected) {
+        struct dp_event evt = {};
+        evt.type = DP_EVENT_DROP;
+        evt.ingress_ifindex = b->ingress_port;
+        evt.pre_nat_ip_src = b->pre_nat_ip_src;
+        evt.pre_nat_ip_dst = b->pre_nat_ip_dst;
+        evt.pre_nat_sport = b->pre_nat_sport;
+        evt.pre_nat_dport = b->pre_nat_dport;
+        __u64 sample_size = skb->len < SAMPLE_SIZE ? skb->len : SAMPLE_SIZE;
+        bpf_perf_event_output(skb, &INT_EVENTS_MAP, (sample_size << 32) | BPF_F_CURRENT_CPU,
+                                  &evt, sizeof(evt));
+    }
 
     if (filter_allow(b->ingress_port, skb->ifindex, hash, egress_timestamp, hop_latency)) {
         struct dp_event evt = {};
@@ -300,10 +410,9 @@ int egress(struct __sk_buff *skb)
         evt.pre_nat_ip_dst = b->pre_nat_ip_dst;
         evt.pre_nat_sport = b->pre_nat_sport;
         evt.pre_nat_dport = b->pre_nat_dport;
-
         __u64 sample_size = skb->len < SAMPLE_SIZE ? skb->len : SAMPLE_SIZE;
-        bpf_perf_event_output(skb, &INT_EVENTS_MAP, (sample_size << 32) | BPF_F_CURRENT_CPU,
-                                  &evt, sizeof(evt));
+            bpf_perf_event_output(skb, &INT_EVENTS_MAP, (sample_size << 32) | BPF_F_CURRENT_CPU,
+                                      &evt, sizeof(evt));
     }
 
     return TC_ACT_UNSPEC;
