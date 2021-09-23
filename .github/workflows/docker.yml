@@ -16,7 +16,7 @@ jobs:
       - uses: actions/checkout@v2
 
       - name: Build the Docker images
-        run: ./scripts/compile-bpf.sh && docker build -t registry.aetherproject.org/tost/int-host-reporter:latest .
+        run: docker build -t registry.aetherproject.org/tost/int-host-reporter:latest .
 
       - name: Login to Aether registry
         run: docker login registry.aetherproject.org --username ${{ secrets.AETHER_DOCKER_REGISTRY_LOGIN }} --password ${{ secrets.AETHER_DOCKER_REGISTRY_PASSWORD }}
