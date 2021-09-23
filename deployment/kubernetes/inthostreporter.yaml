@@ -25,7 +25,7 @@ spec:
         - name: aetherregistrysecret
       containers:
         - name: int-host-reporter
-          image: registry.aetherproject.org/tost/int-host-reporter:generic-dev
+          image: registry.aetherproject.org/tost/int-host-reporter:latest
           imagePullPolicy: "Always"
           env:
             - name: DATA_INTERFACE
