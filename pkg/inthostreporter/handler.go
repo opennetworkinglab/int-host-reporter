@@ -37,14 +37,14 @@ type ReportHandler struct {
 	udpConn *net.UDPConn
 
 	watchlist          []watchlist.INTWatchlistRule
-	reportsChannel     chan dataplane.Event
+	reportsChannel     chan dataplane.PacketMetadata
 	dataPlaneInterface *dataplane.DataPlaneInterface
 }
 
 func NewReportHandler(dpi *dataplane.DataPlaneInterface) *ReportHandler {
 	rh := &ReportHandler{}
 	rh.dataPlaneInterface = dpi
-	rh.reportsChannel = make(chan dataplane.Event, rxChannelSize)
+	rh.reportsChannel = make(chan dataplane.PacketMetadata, rxChannelSize)
 	return rh
 }
 
@@ -101,11 +101,13 @@ func (rh *ReportHandler) Start() error {
 	return nil
 }
 
-func (rh *ReportHandler) applyWatchlist(pktMd *dataplane.PacketMetadata) bool {
+func (rh *ReportHandler) applyWatchlist(pktMd dataplane.PacketMetadata) bool {
 	packetLog := log.Fields{
 		"protocol" : pktMd.Protocol,
 		"src-addr" : pktMd.SrcAddr.String(),
 		"dst-addr" : pktMd.DstAddr.String(),
+		"src-port" : pktMd.SrcPort,
+		"dst-port" : pktMd.DstPort,
 	}
 
 	log.WithFields(packetLog).Debug("Applying INT watchlist for packet.")
@@ -144,8 +146,11 @@ func (rh *ReportHandler) applyWatchlist(pktMd *dataplane.PacketMetadata) bool {
 func (rh *ReportHandler) rxFn(id int) {
 	hwID := uint8(id)
 	seqNo := uint32(0)
-	for event := range rh.reportsChannel {
-		pktMd := event.Parse()
+	for pktMd := range rh.reportsChannel {
+		if !rh.applyWatchlist(pktMd) {
+			continue
+		}
+
 		fields := log.WithFields(log.Fields{
 			"DataPlaneReport": pktMd.DataPlaneReport,
 			"SrcAddr":         pktMd.SrcAddr,
@@ -156,10 +161,6 @@ func (rh *ReportHandler) rxFn(id int) {
 			"Encapsulation":   pktMd.EncapMode,
 		})
 		fields.Debugf("RX worker %d parsed data plane event.", id)
-
-		if !rh.applyWatchlist(pktMd) {
-			continue
-		}
 
 		if seqNo >= math.MaxUint32 {
 			seqNo = 0
