@@ -145,7 +145,6 @@ func (d *DataPlaneInterface) DetectPacketDrops() {
 		iter := d.ingressSeqNumMap.Iterate()
 		for iter.Next(&key, &value) {
 			if !d.seenByEgress(key, value) {
-				log.Debugf("Potential packet drop detected for flow %x", key)
 				pktMd := PacketMetadata{
 					DataPlaneReport: &DataPlaneReport{
 						Type:                  DropReport,

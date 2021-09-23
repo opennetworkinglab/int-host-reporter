@@ -110,7 +110,7 @@ func (rh *ReportHandler) applyWatchlist(pktMd dataplane.PacketMetadata) bool {
 		"dst-port" : pktMd.DstPort,
 	}
 
-	log.WithFields(packetLog).Debug("Applying INT watchlist for packet.")
+	log.WithFields(packetLog).Trace("Applying INT watchlist for packet.")
 
 	// apply for post-NAT 5-tuple
 	for _, rule := range rh.watchlist {
@@ -138,7 +138,7 @@ func (rh *ReportHandler) applyWatchlist(pktMd dataplane.PacketMetadata) bool {
 		}
 	}
 
-	log.WithFields(packetLog).Debug("No INT watchlist match found for packet.")
+	log.WithFields(packetLog).Trace("No INT watchlist match found for packet.")
 
 	return false
 }

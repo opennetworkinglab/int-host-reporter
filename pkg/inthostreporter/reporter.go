@@ -57,15 +57,13 @@ func (itr *IntHostReporter) loadBPFProgram(ifName string) error {
 	}
 
 	cmd := exec.Command(loaderProg, ingressArgs...)
-	out, err := cmd.Output()
-	log.Debugf("Out: %s", out)
+	_, err := cmd.Output()
 	if err != nil {
 		return err
 	}
 
 	cmd = exec.Command(loaderProg, egressArgs...)
-	out, err = cmd.Output()
-	log.Debugf("Out: %s", out)
+	_, err = cmd.Output()
 	if err != nil {
 		return err
 	}
