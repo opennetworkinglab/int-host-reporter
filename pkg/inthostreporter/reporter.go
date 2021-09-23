@@ -1,3 +1,6 @@
+// Copyright 2020-present Open Networking Foundation
+// SPDX-License-Identifier: LicenseRef-ONF-Member-1.0
+
 package inthostreporter
 
 import (
@@ -52,14 +55,15 @@ func (itr *IntHostReporter) loadBPFProgram(ifName string) error {
 	}
 
 	cmd := exec.Command(loaderProg, ingressArgs...)
-	_, err := cmd.Output()
-
+	out, err := cmd.Output()
+	log.Debugf("Out: %s", out)
 	if err != nil {
 		return err
 	}
 
 	cmd = exec.Command(loaderProg, egressArgs...)
-	_, err = cmd.Output()
+	out, err = cmd.Output()
+	log.Debugf("Out: %s", out)
 	if err != nil {
 		return err
 	}

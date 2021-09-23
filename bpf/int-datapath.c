@@ -1,3 +1,4 @@
+#include <stddef.h>
 #include <stdbool.h>
 #include <linux/bpf.h>
 #include <linux/pkt_cls.h>
@@ -9,6 +10,7 @@
 #define DP_EVENT_TRACE 1
 #define DP_EVENT_DROP 2
 
+/* struct bridged_metadata is used to pass per-packet metadata between TC Ingress and TC Egress */
 struct bridged_metadata {
     __u64 ingress_timestamp;
     __u32 ingress_port;
@@ -18,6 +20,8 @@ struct bridged_metadata {
     __u16 pre_nat_dport;
 };
 
+/* struct dp_event opaques information passed to the userspace.
+   The content will be used by userspace agent to create an INT report */
 struct dp_event {
     __u8 type; // either DP_EVENT_TRACE or DP_EVENT_DROP notification
     __u8 reason; // drop reason or 0

@@ -1,1 +1,1 @@
-clang -c -g -target bpf -O2 -o out.o bpf/int-datapath.c
+clang -O2 -emit-llvm -g -c bpf/int-datapath.c -o - | llc -march=bpf -filetype=obj -o /opt/out.o
