@@ -4,12 +4,13 @@
 
 `INT Host Reporter` leverages the modified Calico CNI and its eBPF dataplane as a network backend generating data plane reports.
 
+![Design](docs/static/images/design.png?raw=true "High-level design of CNI-independent host-INT")
+
 ## Building INT Host Reporter
 
 From the main directory:
 
 ```bash
-$ ./scripts/compile-bpf.sh
 $ docker build -t registry.aetherproject.org/tost/int-host-reporter:<TAG> .
 ```
 
@@ -17,41 +18,10 @@ $ docker build -t registry.aetherproject.org/tost/int-host-reporter:<TAG> .
 
 ### Install the K8s cluster
 
-On each K8s node:
+The installation of a Kubernetes cluster is basically out of scope of this document. 
+You should follow the instructions to deploy the Kubernetes cluster using the installed of your choice (see Kubernetes documentation). 
 
-```bash
-$ sudo apt-get update
-$ sudo apt-get install -y containerd=1.3.3-0ubuntu2
-$ sudo apt-get install -y docker.io=19.03.8-0ubuntu1.20.04.1
-$ sudo usermod -aG docker $USER
-$ sudo systemctl enable docker
-$ sudo apt-get update
-$ sudo apt-get install -y apt-transport-https ca-certificates curl
-$ sudo curl -fsSLo /usr/share/keyrings/kubernetes-archive-keyring.gpg https://packages.cloud.google.com/apt/doc/apt-key.gpg
-$ echo "deb [signed-by=/usr/share/keyrings/kubernetes-archive-keyring.gpg] https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
-$ sudo apt-get update
-$ sudo apt-get install -y kubelet kubeadm kubectl
-$ sudo apt-mark hold kubelet kubeadm kubectl
-```
-
-Edit `kubelet` configuration (`/etc/systemd/system/kubelet.service.d/10-kubeadm.conf`) and add `--node-ip` as follows:
-
-```
-ExecStart=/usr/bin/kubelet --node-ip=<NODE-IP>  $KUBELET_KUBECONFIG_ARGS $KUBELET_CONFIG_ARGS $KUBELET_KUBEADM_ARGS $KUBELET_EXTRA_ARGS
-```
-
-Then, you need to reload `kubelet`:
-
-```bash
-$ sudo systemctl daemon-reload
-$ sudo systemctl restart kubelet
-```
-
-On the K8s master node invoke:
-
-```bash
-$ sudo kubeadm init --pod-network-cidr=10.0.0.0/16 --apiserver-advertise-address=<NODE-IP>
-```
+However, we provide [the manual installation](./docs/k8s-cluster-installation.md) guide that can be used for the testing purpose. 
 
 ### Create K8s secret
 
@@ -93,7 +63,7 @@ Then, run the below command to deploy the INT Host Reporter.
 
 `$ kubectl apply -f deployment/kubernetes/inthostreporter.yaml`
 
-Verify that the `inthostreporter` is in the Running state on each node:
+Verify that the `int-host-reporter` is in the Running state on each node:
 
 ```bash
 $ kubectl get pods --all-namespaces -o wide
@@ -103,20 +73,14 @@ kube-system   int-host-reporter-ljwvs                    1/1     Running   0    
 kube-system   int-host-reporter-x48ps                    1/1     Running   0          9m11s   10.67.219.106   kubemaster   <none>           <none>
 ```
 
-## Verify drop reports
+## Using INT Host Reporter with DeepInsight
 
-The drop reasons specified by the Calico eBPF datapath are eBPF-specific (e.g. fail to adjust room during encapsulation). 
-Thus, it is not straightforward to verify drop reports. The common case for packet drops is IP TTL < 0.
-To verify drop reports we can simply generate UDP packets with IPv4 TTL = 0. Note that destination IPv4 address and UDP port 
-must point to the K8s NodePort service.
+The host-INT implementation has been tested with DeepInsight - the INT collector provided by Intel. 
+We describe how to use DeepInsight to visualize reports provided by host-INT below. 
 
-```bash
-$ sendp(Ether()/IP(dst="192.168.99.20",ttl=0)/UDP(dport=31584), iface="enp0s8")
-```
 
 
 ## TODOs 
 
-- Only IPv4 is supported
-- Currently, we generate an INT report for each packet. It might lead to the network overload. We may want to apply 
-Bloom Filter or other solution to limit the number of INT reports.
+- Only IPv4 is supported. 
+- INT Host Reporter only supports UDP/TCP packets; ICMP packets are not reported.
