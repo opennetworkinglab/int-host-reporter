@@ -1,17 +1,34 @@
 # INT Host Reporter
 
-`INT Host Reporter` is a Go application implementing the support for the In-Band Network Telemetry on the end hosts running Kubernetes.
+This project implements the "host-INT" approach - the support for In-Band Network Telemetry on the end hosts.
+In particular, this project enables observing the E2E flows that are traversing the Kubernetes cluster 
+(e.g. Pod-to-Pod communication or packets to/from Kubernetes Services).
 
-`INT Host Reporter` leverages the modified Calico CNI and its eBPF dataplane as a network backend generating data plane reports.
+## Overview
+
+`INT Host Reporter` implements the "host-INT" approach by using a combination of the eBPF code running in the Linux kernel 
+and a Go application running as an userspace agent. The diagram below shows the high-level design of the host-INT solution, which is independent of the Kubernetes CNI being used.
 
 ![Design](docs/static/images/design.png?raw=true "High-level design of CNI-independent host-INT")
 
+As depicted in the diagram, the `INT Host Reporter` consists of two pieces:
+
+- the INT-aware eBPF programs are attached to both TC Ingress and TC Egress hooks. The ingress eBPF program
+does a basic packet pre-processing and collects ingress metadata that is further stored in a shared BPF map.
+  The egress eBPF program reads the per-packet metadata and generates a data plane report by pusing an event to the 
+  `BPF_PERF_EVENT_ARRAY` map .
+- the `int-host-reporter` applications listens to the events from the `BPF_PERF_EVENT_ARRAY` map, converts
+the data plane reports into INT reports and sends the INT reports to the INT collector. 
+  
+As mentioned before, the INT Host Reporter works in the CNI-independent fashion, so it can be integrated with any Kubernetes CNI. 
+We have already tested it with [Calico](https://docs.projectcalico.org/getting-started/kubernetes/) and [Cilium](https://cilium.io/). 
+
 ## Building INT Host Reporter
 
-From the main directory:
+To build the INT Host Reporter image run the below command from the main directory:
 
 ```bash
-$ docker build -t registry.aetherproject.org/tost/int-host-reporter:<TAG> .
+$ docker build -t <IMAGE-NAME>:<TAG> .
 ```
 
 ## Deployment guide
@@ -19,7 +36,7 @@ $ docker build -t registry.aetherproject.org/tost/int-host-reporter:<TAG> .
 ### Install the K8s cluster
 
 The installation of a Kubernetes cluster is basically out of scope of this document. 
-You should follow the instructions to deploy the Kubernetes cluster using the installed of your choice (see Kubernetes documentation). 
+You should follow the instructions to deploy the Kubernetes cluster using the installer of your choice (see Kubernetes documentation). 
 
 However, we provide [the manual installation](./docs/k8s-cluster-installation.md) guide that can be used for the testing purpose. 
 
