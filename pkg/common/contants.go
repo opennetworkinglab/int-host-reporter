@@ -3,6 +3,14 @@
 
 package common
 
+type CNIType uint32
+
+const (
+	CNITypeCilium = iota
+	CNITypeCalicoEBPF
+	CNITypeCalicoIPTables
+)
+
 const (
 	INTWatchlistProtoSrcAddrMap = "WATCHLIST_PROTO_SRCADDR_MAP"
 
