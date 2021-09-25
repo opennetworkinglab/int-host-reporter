@@ -12,10 +12,12 @@ import (
 
 var (
 	watchlistConfiguration = flag.String("watchlist-conf", "", "File with INT watchlist configuration")
+	cniInUse = flag.String("cni", "", "Kubernetes CNI used by the cluster")
 )
 
 func init() {
 	flag.StringVar(watchlistConfiguration, "f", "", "")
+	flag.StringVar(cniInUse, "c", "", "")
 }
 
 func main() {
