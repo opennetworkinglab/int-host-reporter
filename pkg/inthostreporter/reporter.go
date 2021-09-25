@@ -5,6 +5,7 @@ package inthostreporter
 
 import (
 	"context"
+	"fmt"
 	"github.com/opennetworkinglab/int-host-reporter/pkg/dataplane"
 	"github.com/opennetworkinglab/int-host-reporter/pkg/watchlist"
 	log "github.com/sirupsen/logrus"
@@ -71,7 +72,8 @@ func (itr *IntHostReporter) loadBPFProgram(ifName string) error {
 	return nil
 }
 
-func (itr *IntHostReporter) attachINTProgramsAtStartup() {
+func (itr *IntHostReporter) attachINTProgramsAtStartup() error {
+	noProgramsAttached := true
 	links, _ := netlink.LinkList()
 	for _, link := range links {
 		if link.Attrs().Name == *DataInterface ||
@@ -81,10 +83,17 @@ func (itr *IntHostReporter) attachINTProgramsAtStartup() {
 			if err != nil {
 				log.Errorf("Failed to load BPF program to %s: %v", link.Attrs().Name, err.Error())
 			} else {
+				noProgramsAttached = false
 				log.Debugf("Successfully loaded BPF program to %s", link.Attrs().Name)
 			}
 		}
 	}
+
+	if noProgramsAttached {
+		return fmt.Errorf("no BPF program has been attached, verify if data interface is configured")
+	}
+
+	return nil
 }
 
 func interfaceHasINTProgram(link netlink.Link, handle uint32) bool {
@@ -129,10 +138,12 @@ func (itr *IntHostReporter) Start() error {
 	dataPlaneInterfaceCtx, cancel := context.WithCancel(itr.ctx)
 	itr.perfReaderCancel = cancel
 
-	itr.attachINTProgramsAtStartup()
-	go itr.reloadINTProgramsIfNeeded()
+	err := itr.attachINTProgramsAtStartup()
+	if err != nil {
+		return err
+	}
 
-	err := itr.dataPlaneInterface.Init()
+	err = itr.dataPlaneInterface.Init()
 	if err != nil {
 		return err
 	}
@@ -142,6 +153,7 @@ func (itr *IntHostReporter) Start() error {
 		return err
 	}
 
+	go itr.reloadINTProgramsIfNeeded()
 	go itr.dataPlaneInterface.DetectPacketDrops()
 
 	// Blocking
