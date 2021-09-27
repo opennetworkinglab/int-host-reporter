@@ -6,12 +6,12 @@ package inthostreporter
 import (
 	"context"
 	"fmt"
+	"github.com/opennetworkinglab/int-host-reporter/pkg/common"
 	"github.com/opennetworkinglab/int-host-reporter/pkg/dataplane"
 	"github.com/opennetworkinglab/int-host-reporter/pkg/watchlist"
 	log "github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
 	"os/exec"
-	"strings"
 	"time"
 )
 
@@ -76,8 +76,7 @@ func (itr *IntHostReporter) attachINTProgramsAtStartup() error {
 	noProgramsAttached := true
 	links, _ := netlink.LinkList()
 	for _, link := range links {
-		if link.Attrs().Name == *DataInterface ||
-			(strings.Contains(link.Attrs().Name, "lxc") && link.Attrs().Name != "lxc_health") {
+		if link.Attrs().Name == *DataInterface || common.IsInterfaceManagedByCNI(link.Attrs().Name) {
 			log.Debugf("Trying to load BPF program to %s", link.Attrs().Name)
 			err := itr.loadBPFProgram(link.Attrs().Name)
 			if err != nil {
@@ -119,7 +118,7 @@ func (itr *IntHostReporter) reloadINTProgramsIfNeeded() {
 		links, _ := netlink.LinkList()
 		for _, link := range links {
 			if link.Attrs().Name == *DataInterface ||
-				(strings.Contains(link.Attrs().Name, "lxc") && link.Attrs().Name != "lxc_health") {
+				common.IsInterfaceManagedByCNI(link.Attrs().Name) {
 				if !interfaceHasINTProgram(link, netlink.HANDLE_MIN_INGRESS) ||
 					!interfaceHasINTProgram(link, netlink.HANDLE_MIN_EGRESS) {
 					log.Debugf("Re-loading INT eBPF program to interface %v", link.Attrs().Name)
