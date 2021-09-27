@@ -83,7 +83,12 @@ type: kubernetes.io/dockerconfigjson
 
 ### Deploy INT Host Reporter
 
-Edit `deployment/kubernetes/inthostreporter.yaml` and set the `COLLECTOR` variable pointing to the address of the INT collector.
+Edit `deployment/kubernetes/inthostreporter.yaml` and configure the following variables:
+
+- `CNI` should define the Kubernetes CNI being used for the cluster. We currently support the following values: `cilium`, `calico-ebpf`, `calico-iptables`.
+- `COLLECTOR` should point to the address of the INT collector (e.g. 192.168.50.99:32766).
+- `DATA_INTERFACE` should be set to the name of physical interface that has the `status.hostIP` assigned. 
+  For instance, if Kubernetes API server is advertised on `192.168.99.20`, the data interface is the interface that has this IP address assigned.
 
 Next, prepare the INT watchlist file (modify `configs/watchlist.yaml` if needed) and deploy it as ConfigMap. 
 
@@ -103,6 +108,9 @@ kube-system   int-host-reporter-ljwvs                    1/1     Running   0    
 kube-system   int-host-reporter-x48ps                    1/1     Running   0          9m11s   10.67.219.106   kubemaster   <none>           <none>
 ```
 
+For the CNIs that we have tested, there are no other, CNI-specific configuration steps required for the INT Host Reporter to work properly.
+Once the INT Host Reporter is successfully deployed, it should start sending INT reports to the collector. 
+
 ## Using INT Host Reporter with DeepInsight
 
 If the INT Host Reporter has been successfully deployed, it will start generating and sending INT reports to the INT collector.
@@ -110,9 +118,23 @@ So far, the Host INT Reporter has been tested with DeepInsight (DI) - the INT co
 DeepInsight requires the additional configuration step to start visualizing network statistics.  
 
 The additional configuration step is to upload the DI topology file - the JSON file that describes 
-the topology of a network. 
+the topology of a network. In particular, the DI topology should have the following sections defined:
 
+- `switches` - the list of switches in the network. In the case of host-INT, the virtual switch (CNI datapath) is also defined as the switch.
+Thus, this section should contain each network switch plus all the hosts, where the Kubernetes is running on.
+- `hosts` - the list of hosts in the network. In the case of host-INT, the Kubernetes nodes SHOULD NOT be defined as hosts (see the above bullet). 
+The `hosts` section should only contain servers attached to the network switches.
+- `subnets` - the list of subnets in the network. In the case of host-INT, it should contain the subnet used to interconnect Kubernetes nodes, as well as
+the all the Pod subnets (the range of IP addresses, from which the Pod IPs are assigned from). Typically, a CNI will use a single IP subnet per Kubernetes worker,
+  so there should be at least as many subnets defined as the number of Kubernetes workers.
+- `links` - the list of links in the network. It represents the links between `switches` and `hosts` as well as `switches` and `subnets`. 
+In the case of host-INT, Pods are not defined as `hosts`, but we use `subnets` to represent the group of Pods attached to the network. Therefore,
+the `links` section should contain the links between virtual switch and a Pod's subnet for each virtual interface configured on the Kubernetes node.
 
+As a reference, we provide a sample DI topology file in in the `examples/deepinsight/` directory.
+
+However, building the DI topology file manually is time-consuming and error-prone. Therefore, we have created the `./di gen-topology` script
+to automate this process. You can find the guide how to use this script in [the bf-di-scripts repository](https://github.com/opennetworkinglab/bf-di-scripts/tree/master/4/utility#auto-generate-topology-for-end-host-int).
 
 ## TODOs 
 
