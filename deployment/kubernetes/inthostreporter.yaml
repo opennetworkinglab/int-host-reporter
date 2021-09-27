@@ -28,6 +28,8 @@ spec:
           image: registry.aetherproject.org/tost/int-host-reporter:latest
           imagePullPolicy: "Always"
           env:
+            - name: CNI
+              value: "calico-ebpf"
             - name: DATA_INTERFACE
               value: "enp0s8"
             - name: COLLECTOR

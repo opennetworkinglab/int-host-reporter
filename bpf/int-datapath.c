@@ -263,7 +263,7 @@ int ingress(struct __sk_buff *skb)
     __u32 ip_src, ip_dst;
     __u32 ip_protocol;
     __u16 l4_sport, l4_dport;
-    if (bpf_htons(udp->dest) == 8472) {
+    if (bpf_htons(udp->dest) == 8472 || bpf_htons(udp->dest) == 4789) {
         struct iphdr *inner_ip = data + sizeof(*eth) + sizeof(*iph) + sizeof(*udp) +
                         8 + sizeof(*eth);
         if (data + sizeof(*eth) + sizeof(*iph) + sizeof(*udp) + 8 + sizeof(*eth) + sizeof(*iph) > data_end)
