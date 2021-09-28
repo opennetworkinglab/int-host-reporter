@@ -58,14 +58,16 @@ func (itr *IntHostReporter) loadBPFProgram(ifName string) error {
 	}
 
 	cmd := exec.Command(loaderProg, ingressArgs...)
-	_, err := cmd.Output()
+	out, err := cmd.CombinedOutput()
 	if err != nil {
+		log.Debugf("ingress filter replace failed: %v", string(out))
 		return err
 	}
 
 	cmd = exec.Command(loaderProg, egressArgs...)
-	_, err = cmd.Output()
+	out, err = cmd.CombinedOutput()
 	if err != nil {
+		log.Debugf("egress filter replace failed: %v", string(out))
 		return err
 	}
 
@@ -80,7 +82,7 @@ func (itr *IntHostReporter) attachINTProgramsAtStartup() error {
 			log.Debugf("Trying to load BPF program to %s", link.Attrs().Name)
 			err := itr.loadBPFProgram(link.Attrs().Name)
 			if err != nil {
-				log.Errorf("Failed to load BPF program to %s: %v", link.Attrs().Name, err.Error())
+				log.Errorf("Failed to load BPF program to %s: %v", link.Attrs().Name, err)
 			} else {
 				noProgramsAttached = false
 				log.Debugf("Successfully loaded BPF program to %s", link.Attrs().Name)
@@ -124,7 +126,7 @@ func (itr *IntHostReporter) reloadINTProgramsIfNeeded() {
 					log.Debugf("Re-loading INT eBPF program to interface %v", link.Attrs().Name)
 					err := itr.loadBPFProgram(link.Attrs().Name)
 					if err != nil {
-						log.Errorf("Failed to load BPF program to %s: %v", link.Attrs().Name, err.Error())
+						log.Errorf("Failed to load BPF program to %s: %v", link.Attrs().Name, err)
 					}
 				}
 			}
