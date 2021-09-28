@@ -19,6 +19,7 @@ struct bridged_metadata {
     __u16 pre_nat_sport;
     __u16 pre_nat_dport;
     __u16 seq_no;
+    __u8  pad[3];
 };
 
 /* struct dp_event opaques information passed to the userspace.
@@ -66,9 +67,12 @@ struct seqno_ingress {
     __u16 dport;
 };
 
-struct shared_map_key = {
+struct shared_map_key {
     __u64 pkt_ptr;
     __u32 flow_hash;
+    // padding is added to pass BPF verifier, see:
+    // https://stackoverflow.com/questions/60601180/af-xdp-invalid-indirect-read-from-stack
+    __u32 padding;
 };
 
 struct bpf_elf_map SEC("maps") SHARED_MAP = {
@@ -328,10 +332,9 @@ int ingress(struct __sk_buff *skb)
 //        flow_seqnum = val->seq_no;
 //    }
 
-    struct shared_map_key key = {
-        .pkt_ptr = (__u64) skb,
-        .flow_hash = hash,
-    };
+    struct shared_map_key key = { };
+    key.pkt_ptr = (__u64) skb;
+    key.flow_hash = hash;
 
     struct bridged_metadata bmd = {
         .ingress_timestamp = ingress_timestamp,
@@ -340,7 +343,6 @@ int ingress(struct __sk_buff *skb)
         .pre_nat_ip_dst = ip_dst,
         .pre_nat_dport = l4_dport,
         .pre_nat_sport = l4_sport,
-        .seq_no = flow_seqnum,
     };
 
     bpf_map_update_elem(&SHARED_MAP, &key, &bmd, 0);
@@ -382,10 +384,11 @@ int egress(struct __sk_buff *skb)
         .flow_hash = hash,
     };
 
-    struct bridged_metadata *b = bpf_map_lookup_and_delete_elem(&SHARED_MAP, &key);
+    struct bridged_metadata *b = bpf_map_lookup_elem(&SHARED_MAP, &key);
     if (!b) {
         return TC_ACT_UNSPEC;
     }
+
     bpf_printk("Read bridged metadata for %x: ingress_tstamp=%llu, ingress_port=%d", hash, b->ingress_timestamp,
                b->ingress_port);
 
@@ -433,6 +436,8 @@ int egress(struct __sk_buff *skb)
             bpf_perf_event_output(skb, &INT_EVENTS_MAP, (sample_size << 32) | BPF_F_CURRENT_CPU,
                                       &evt, sizeof(evt));
     }
+
+    bpf_map_delete_elem(&SHARED_MAP, &key);
 
     return TC_ACT_UNSPEC;
 }
