@@ -16,10 +16,14 @@ struct bridged_metadata {
     __u32 ingress_port;
     __u32 pre_nat_ip_dst;
     __u32 pre_nat_ip_src;
+    __u32 pad1;
     __u16 pre_nat_sport;
     __u16 pre_nat_dport;
     __u16 seq_no;
-    __u8  pad[3];
+    /* This field is used by userspace for the packet detection process.
+       The userspace sets this field if it sees the bridged metadata for the first time.
+       If the field is still set the second time the userspace sees it, the entire entry is removed by userspace. */
+    __u16 seen_by_userspace;
 };
 
 /* struct dp_event opaques information passed to the userspace.
@@ -231,7 +235,7 @@ int ingress(struct __sk_buff *skb)
 {
     __u64 ingress_timestamp = bpf_ktime_get_ns();
     __u32 hash = bpf_get_hash_recalc(skb);
-    bpf_printk("Ingress, skbptr=%p, port=%d, hash=%x", skb, skb->ifindex, hash);
+    bpf_printk("Ingress, skbptr=%llu, port=%d, hash=%x", skb, skb->ifindex, hash);
 
     void *data = (void *)(long)skb->data;
     void *data_end = (void *)(long)skb->data_end;
@@ -262,12 +266,10 @@ int ingress(struct __sk_buff *skb)
     // only for the PoC purpose; don't report system flows
     if (udp->source == bpf_htons(6443) || udp->dest == bpf_htons(6443) ||
         udp->source == bpf_htons(8181) || udp->dest == bpf_htons(8181) ||
+        udp->source == bpf_htons(8080) || udp->dest == bpf_htons(8080) ||
         bpf_htons(udp->source) == 4240 || bpf_htons(udp->dest) == 4240) {
         return TC_ACT_UNSPEC;
     }
-
-    bpf_printk("ip_src=%x, ip_dst=%x, proto=%d", bpf_htonl(iph->saddr), bpf_htonl(iph->daddr), iph->protocol);
-    bpf_printk("l4_sport=%d, l4_dport=%d", bpf_htons(udp->source), bpf_htons(udp->dest));
 
     __u32 ip_src, ip_dst;
     __u32 ip_protocol;
@@ -332,18 +334,21 @@ int ingress(struct __sk_buff *skb)
 //        flow_seqnum = val->seq_no;
 //    }
 
-    struct shared_map_key key = { };
+    struct shared_map_key key = {};
+    __builtin_memset(&key, 0, sizeof(struct shared_map_key));
     key.pkt_ptr = (__u64) skb;
     key.flow_hash = hash;
+    key.padding = 0;
 
-    struct bridged_metadata bmd = {
-        .ingress_timestamp = ingress_timestamp,
-        .ingress_port = skb->ifindex,
-        .pre_nat_ip_src = ip_src,
-        .pre_nat_ip_dst = ip_dst,
-        .pre_nat_dport = l4_dport,
-        .pre_nat_sport = l4_sport,
-    };
+    struct bridged_metadata bmd = {};
+    __builtin_memset(&bmd, 0, sizeof(struct bridged_metadata));
+    bmd.ingress_timestamp = ingress_timestamp;
+    bmd.ingress_port = skb->ifindex;
+    bmd.pre_nat_ip_src = ip_src;
+    bmd.pre_nat_ip_dst = ip_dst;
+    bmd.pre_nat_dport = l4_dport;
+    bmd.pre_nat_sport = l4_sport;
+    bmd.seq_no = 0;
 
     bpf_map_update_elem(&SHARED_MAP, &key, &bmd, 0);
 
@@ -355,7 +360,7 @@ int egress(struct __sk_buff *skb)
 {
     __u64 egress_timestamp = bpf_ktime_get_ns();
     __u32 hash = bpf_get_hash_recalc(skb);
-    bpf_printk("Egress, skbptr=%p, port=%d, hash=%x", skb, skb->ifindex, hash);
+    bpf_printk("Egress, skbptr=%llu, port=%d, hash=%x", skb, skb->ifindex, hash);
 
     void *data = (void *)(long)skb->data;
     void *data_end = (void *)(long)skb->data_end;
@@ -379,10 +384,10 @@ int egress(struct __sk_buff *skb)
 
     bpf_printk("l4_sport=%d, l4_dport=%d", bpf_htons(udp->source), bpf_htons(udp->dest));
 
-    struct shared_map_key key = {
-        .pkt_ptr = (__u64) skb,
-        .flow_hash = hash,
-    };
+    struct shared_map_key key = {};
+    __builtin_memset(&key, 0, sizeof(struct shared_map_key));
+    key.pkt_ptr = (__u64) skb;
+    key.flow_hash = hash;
 
     struct bridged_metadata *b = bpf_map_lookup_elem(&SHARED_MAP, &key);
     if (!b) {
@@ -438,6 +443,7 @@ int egress(struct __sk_buff *skb)
     }
 
     bpf_map_delete_elem(&SHARED_MAP, &key);
+    bpf_printk("Delete element from SHARED_MAP: ptr=%llu, hash=%x", key.pkt_ptr, key.flow_hash);
 
     return TC_ACT_UNSPEC;
 }

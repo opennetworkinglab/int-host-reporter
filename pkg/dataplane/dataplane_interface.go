@@ -24,11 +24,31 @@ type DataPlaneInterface struct {
 	watchlistMapProtoSrcAddr *ebpf.Map
 	watchlistMapDstAddr      *ebpf.Map
 
+	sharedMap        *ebpf.Map
+
 	ingressSeqNumMap *ebpf.Map
 	egressSeqNumMap  *ebpf.Map
 
 	perfEventArray  *ebpf.Map
 	dataPlaneReader *perf.Reader
+}
+
+type SharedMapKey struct {
+	PacketIdentifier uint64
+	FlowHash         uint32
+	Padding          uint32
+}
+
+type SharedMapValue struct {
+	IngressTimestamp uint64
+	IngressPort      uint32
+	PreNATIPDest     uint32
+	PreNATIPSource   uint32
+	Padding0         uint32
+	PreNATSourcePort uint16
+	PreNATDestPort   uint16
+	SeqNo            uint16
+	SeenByUserspace  uint16
 }
 
 type IngressSeqNumValue struct {
@@ -68,19 +88,12 @@ func (d *DataPlaneInterface) Init() error {
 	}
 	d.watchlistMapDstAddr = watchlistMap
 
-	path = commonPath + "/" + common.INTIngressSeqNumMap
-	ingressSeqNumMap, err := ebpf.LoadPinnedMap(path, nil)
+	path = commonPath + "/" + common.INTSharedMap
+	sharedMap, err := ebpf.LoadPinnedMap(path, nil)
 	if err != nil {
 		return err
 	}
-	d.ingressSeqNumMap = ingressSeqNumMap
-
-	path = commonPath + "/" + common.INTEgressSeqNumMap
-	egressSeqNumMap, err := ebpf.LoadPinnedMap(path, nil)
-	if err != nil {
-		return err
-	}
-	d.egressSeqNumMap = egressSeqNumMap
+	d.sharedMap = sharedMap
 
 	path = commonPath + "/" + common.INTEventsMap
 	eventsMap, err := ebpf.LoadPinnedMap(path, nil)
@@ -140,33 +153,58 @@ func (d *DataPlaneInterface) seenByEgress(flowHash uint32, ingressValue IngressS
 func (d *DataPlaneInterface) DetectPacketDrops() {
 	log.Debug("Starting packet drop detection process..")
 	for {
-		var key uint32
-		var value IngressSeqNumValue
-		iter := d.ingressSeqNumMap.Iterate()
+		var key SharedMapKey
+		var value SharedMapValue
+		iter := d.sharedMap.Iterate()
 		for iter.Next(&key, &value) {
-			if !d.seenByEgress(key, value) {
-				pktMd := PacketMetadata{
-					DataPlaneReport: &DataPlaneReport{
-						Type:                  DropReport,
-						Reason:                common.DropReasonUnknown,
-						PreNATSourceIP:        net.IPv4zero,
-						PreNATDestinationIP:   net.IPv4zero,
-						PreNATSourcePort:      0,
-						PreNATDestinationPort: 0,
-						IngressPort:           value.IngressPort,
-						EgressPort:            0,
-						IngressTimestamp:      value.IngressTimestamp,
-						EgressTimestamp:       0,
-					},
-					EncapMode: "",
-					DstAddr:   common.ToNetIP(value.DstIP),
-					SrcAddr:   common.ToNetIP(value.SrcIP),
-					Protocol:  uint8(value.IPProtocol),
-					DstPort:   value.DestPort,
-					SrcPort:   value.SourcePort,
-				}
-				d.eventsChannel <- pktMd
+			err := d.sharedMap.Lookup(&key, &value)
+			if err != nil {
+				log.Debugf("failed to lookup from shared map: %v", err)
+				continue
 			}
+
+			if value.SeenByUserspace == 1 {
+				// this is the second time we see this entry,
+				// so it's very likely that this packet haven't reached any egress program.
+				// Therefore, we can delete it from map and report a potential packet drop.
+				err = d.sharedMap.Delete(&key)
+				if err != nil {
+					log.Debugf("failed to delete key %v from shared map: %v", key, err)
+				}
+				continue
+			}
+
+			value.SeenByUserspace = 1
+
+			err = d.sharedMap.Put(&key, &value)
+			if err != nil {
+				log.Debugf("Failed to set seen-by-userspace flag")
+			}
+
+
+			//if !d.seenByEgress(key, value) {
+			//	pktMd := PacketMetadata{
+			//		DataPlaneReport: &DataPlaneReport{
+			//			Type:                  DropReport,
+			//			Reason:                common.DropReasonUnknown,
+			//			PreNATSourceIP:        net.IPv4zero,
+			//			PreNATDestinationIP:   net.IPv4zero,
+			//			PreNATSourcePort:      0,
+			//			PreNATDestinationPort: 0,
+			//			IngressPort:           value.IngressPort,
+			//			EgressPort:            0,
+			//			IngressTimestamp:      value.IngressTimestamp,
+			//			EgressTimestamp:       0,
+			//		},
+			//		EncapMode: "",
+			//		DstAddr:   common.ToNetIP(value.DstIP),
+			//		SrcAddr:   common.ToNetIP(value.SrcIP),
+			//		Protocol:  uint8(value.IPProtocol),
+			//		DstPort:   value.DestPort,
+			//		SrcPort:   value.SourcePort,
+			//	}
+			//	d.eventsChannel <- pktMd
+			//}
 		}
 		time.Sleep(time.Second)
 	}

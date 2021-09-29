@@ -25,11 +25,11 @@ spec:
         - name: aetherregistrysecret
       containers:
         - name: int-host-reporter
-          image: registry.aetherproject.org/tost/int-host-reporter:latest
+          image: registry.aetherproject.org/tost/int-host-reporter:dev
           imagePullPolicy: "Always"
           env:
             - name: CNI
-              value: "calico-ebpf"
+              value: "cilium"
             - name: DATA_INTERFACE
               value: "enp0s8"
             - name: COLLECTOR
@@ -40,7 +40,7 @@ spec:
                 fieldRef:
                   fieldPath: status.hostIP
           command: ["int-host-reporter"]
-          args: ["--data-interface", "$(DATA_INTERFACE)", "--collector", "$(COLLECTOR)", "--switch-id", "$(NODE_IP)", "-f", "/etc/watchlist/watchlist.yaml"]
+          args: ["--cni", "$(CNI)","--data-interface", "$(DATA_INTERFACE)", "--collector", "$(COLLECTOR)", "--switch-id", "$(NODE_IP)", "-f", "/etc/watchlist/watchlist.yaml"]
           volumeMounts:
             - name: bpffs
               mountPath: /sys/fs/bpf
