@@ -18,9 +18,7 @@ const (
 
 	INTEventsMap = "INT_EVENTS_MAP"
 
-	INTIngressSeqNumMap = "SEQ_NO_INGRESS"
-
-	INTEgressSeqNumMap = "EGRESS_LAST_SEEN_SEQNO"
+	INTSharedMap = "SHARED_MAP"
 
 	// DefaultMapRoot is the default path where BPFFS should be mounted
 	DefaultMapRoot = "/sys/fs/bpf"
