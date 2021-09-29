@@ -368,7 +368,7 @@ int egress(struct __sk_buff *skb)
 
     struct bridged_metadata *b = bpf_map_lookup_elem(&SHARED_MAP, &key);
     if (!b) {
-        bpf_printk("No bridged metadata found for hash=%x, ptr=%llu. Error?", key.flow_hash, key.pkt_ptr);
+        bpf_printk("No bridged metadata found for hash=%x, ptr=%llu.", key.flow_hash, key.pkt_ptr);
         return TC_ACT_UNSPEC;
     }
 
