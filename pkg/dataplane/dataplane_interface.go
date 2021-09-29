@@ -16,6 +16,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"math/bits"
 	"net"
+	"os"
 	"time"
 )
 
@@ -77,6 +78,11 @@ func (value SharedMapValue) String() string {
 		common.ToNetIP(value.PreNATIPSource).String(),
 		bits.ReverseBytes16(value.PreNATSourcePort),
 		bits.ReverseBytes16(value.PreNATDestPort), value.SeenByUserspace)
+}
+
+func init() {
+	// clear SHARED_MAP; ignore err
+	os.Remove(common.DefaultMapRoot + "/" + common.DefaultMapPrefix + "/" + common.INTSharedMap)
 }
 
 func NewDataPlaneInterface() *DataPlaneInterface {
