@@ -46,7 +46,57 @@ func (itr *IntHostReporter) initWatchlist(watchlist *watchlist.INTWatchlist) {
 	itr.reportHandler.SetINTWatchlist(watchlist.GetRules())
 }
 
+func tcQdiscExists(ifName string) bool {
+	link, err := netlink.LinkByName(ifName)
+	if err != nil {
+		return false
+	}
+
+	qdiscs, _ := netlink.QdiscList(link)
+	for _, qdisc := range qdiscs {
+		if qdisc.Attrs().Parent == netlink.HANDLE_CLSACT {
+			return true
+		}
+	}
+
+	return false
+}
+
+func addTcQdisc(ifName string) error {
+	link, err := netlink.LinkByName(ifName)
+	if err != nil {
+		return err
+	}
+
+	attrs := netlink.QdiscAttrs{
+		LinkIndex: link.Attrs().Index,
+		Handle:    netlink.MakeHandle(0xffff, 0),
+		Parent:    netlink.HANDLE_CLSACT,
+	}
+
+	qdisc := &netlink.GenericQdisc{
+		QdiscAttrs: attrs,
+		QdiscType:  "clsact",
+	}
+
+	if err = netlink.QdiscReplace(qdisc); err != nil {
+		return fmt.Errorf("replacing qdisc for %s failed: %s", ifName, err)
+	} else {
+		log.Debugf("replacing qdisc for %s succeeded", ifName)
+	}
+
+	return nil
+}
+
 func (itr *IntHostReporter) loadBPFProgram(ifName string) error {
+	if !tcQdiscExists(ifName) {
+		err := addTcQdisc(ifName)
+		if err != nil {
+			log.Debugf("failed to add clsact qdisc for %v: %v", ifName, err)
+			return err
+		}
+	}
+
 	loaderProg := "tc"
 	ingressArgs := []string{"filter", "replace", "dev", ifName, "ingress",
 		"prio", "1", "handle", "3", "bpf", "da", "obj", "/opt/out.o",

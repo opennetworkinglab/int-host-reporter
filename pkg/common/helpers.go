@@ -38,7 +38,7 @@ func IsManagedByCilium(intfName string) bool {
 	return false
 }
 
-func IsManagedByCalicoEBPF(intfName string) bool {
+func IsManagedByCalico(intfName string) bool {
 	if strings.Contains(intfName, "cali") && intfName != "vxlan.calico" { // Calico
 		return true
 	}
@@ -49,8 +49,8 @@ func IsInterfaceManagedByCNI(intfName string) bool {
 	switch CNITypeInUse {
 	case CNITypeCilium:
 		return IsManagedByCilium(intfName)
-	case CNITypeCalicoEBPF:
-		return IsManagedByCalicoEBPF(intfName)
+	case CNITypeCalicoEBPF, CNITypeCalicoIPTables:
+		return IsManagedByCalico(intfName)
 	default:
 		return false
 	}
