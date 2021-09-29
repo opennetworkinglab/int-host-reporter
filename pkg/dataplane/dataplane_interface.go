@@ -7,13 +7,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"errors"
+	"fmt"
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/perf"
 	"github.com/google/gopacket/layers"
 	"github.com/opennetworkinglab/int-host-reporter/pkg/common"
 	"github.com/opennetworkinglab/int-host-reporter/pkg/watchlist"
 	log "github.com/sirupsen/logrus"
+	"math/bits"
 	"net"
 	"time"
 )
@@ -44,7 +45,8 @@ type SharedMapValue struct {
 	IngressPort      uint32
 	PreNATIPDest     uint32
 	PreNATIPSource   uint32
-	Padding0         uint32
+	PreNATProto      uint16
+	Padding0         uint16
 	PreNATSourcePort uint16
 	PreNATDestPort   uint16
 	SeqNo            uint16
@@ -60,6 +62,21 @@ type IngressSeqNumValue struct {
 	IPProtocol       uint32
 	SourcePort       uint16
 	DestPort         uint16
+}
+
+func (key SharedMapKey) String() string {
+	return fmt.Sprintf("SharedMapKey={packet-identifier=%v, flow_hash=%x}",
+		key.PacketIdentifier, key.FlowHash)
+}
+
+func (value SharedMapValue) String() string {
+	return fmt.Sprintf("SharedMapValue={ig_timestamp=%v, ig_port=%v, pre-nat-ip-dst=%v," +
+		"pre-nat-ip-src=%v, pre-nat-source-port=%v, pre-nat-dest-port=%v, seen-by-userspace=%v}",
+		value.IngressTimestamp, value.IngressPort,
+		common.ToNetIP(value.PreNATIPDest).String(),
+		common.ToNetIP(value.PreNATIPSource).String(),
+		bits.ReverseBytes16(value.PreNATSourcePort),
+		bits.ReverseBytes16(value.PreNATDestPort), value.SeenByUserspace)
 }
 
 func NewDataPlaneInterface() *DataPlaneInterface {
@@ -133,23 +150,6 @@ func (d *DataPlaneInterface) Start(stopCtx context.Context) error {
 	}
 }
 
-func (d *DataPlaneInterface) seenByEgress(flowHash uint32, ingressValue IngressSeqNumValue) bool {
-	var egressValue uint16
-	err := d.egressSeqNumMap.Lookup(&flowHash, &egressValue)
-	if err != nil && errors.Is(err, ebpf.ErrKeyNotExist) {
-		return false
-	}
-
-	diff := ingressValue.SeqNum - uint32(egressValue)
-	if diff > 0 {
-		log.Debugf("Sequence number gap (diff=%v, ingressSeqNum=%v, EgressSeqNum=%v) detected for flow %x",
-			diff, ingressValue.SeqNum, egressValue, flowHash)
-		return false
-	}
-
-	return true
-}
-
 func (d *DataPlaneInterface) DetectPacketDrops() {
 	log.Debug("Starting packet drop detection process..")
 	for {
@@ -164,6 +164,29 @@ func (d *DataPlaneInterface) DetectPacketDrops() {
 			}
 
 			if value.SeenByUserspace == 1 {
+				pktMd := PacketMetadata{
+					DataPlaneReport: &DataPlaneReport{
+						Type:                  DropReport,
+						Reason:                common.DropReasonUnknown,
+						PreNATSourceIP:        net.IPv4zero,
+						PreNATDestinationIP:   net.IPv4zero,
+						PreNATSourcePort:      0,
+						PreNATDestinationPort: 0,
+						IngressPort:           value.IngressPort,
+						EgressPort:            0,
+						IngressTimestamp:      value.IngressTimestamp,
+						EgressTimestamp:       0,
+					},
+					EncapMode: "",
+					DstAddr:   common.ToNetIP(value.PreNATIPDest),
+					SrcAddr:   common.ToNetIP(value.PreNATIPSource),
+					Protocol:  uint8(value.PreNATProto),
+					DstPort:   bits.ReverseBytes16(value.PreNATDestPort),
+					SrcPort:   bits.ReverseBytes16(value.PreNATSourcePort),
+				}
+
+				d.eventsChannel <- pktMd
+
 				// this is the second time we see this entry,
 				// so it's very likely that this packet haven't reached any egress program.
 				// Therefore, we can delete it from map and report a potential packet drop.
@@ -171,6 +194,10 @@ func (d *DataPlaneInterface) DetectPacketDrops() {
 				if err != nil {
 					log.Debugf("failed to delete key %v from shared map: %v", key, err)
 				}
+				log.WithFields(log.Fields{
+					"key": key,
+					"value": value,
+				}).Trace("Deleted entry from map")
 				continue
 			}
 
@@ -179,32 +206,13 @@ func (d *DataPlaneInterface) DetectPacketDrops() {
 			err = d.sharedMap.Put(&key, &value)
 			if err != nil {
 				log.Debugf("Failed to set seen-by-userspace flag")
+				continue
 			}
 
-
-			//if !d.seenByEgress(key, value) {
-			//	pktMd := PacketMetadata{
-			//		DataPlaneReport: &DataPlaneReport{
-			//			Type:                  DropReport,
-			//			Reason:                common.DropReasonUnknown,
-			//			PreNATSourceIP:        net.IPv4zero,
-			//			PreNATDestinationIP:   net.IPv4zero,
-			//			PreNATSourcePort:      0,
-			//			PreNATDestinationPort: 0,
-			//			IngressPort:           value.IngressPort,
-			//			EgressPort:            0,
-			//			IngressTimestamp:      value.IngressTimestamp,
-			//			EgressTimestamp:       0,
-			//		},
-			//		EncapMode: "",
-			//		DstAddr:   common.ToNetIP(value.DstIP),
-			//		SrcAddr:   common.ToNetIP(value.SrcIP),
-			//		Protocol:  uint8(value.IPProtocol),
-			//		DstPort:   value.DestPort,
-			//		SrcPort:   value.SourcePort,
-			//	}
-			//	d.eventsChannel <- pktMd
-			//}
+			log.WithFields(log.Fields{
+				"key": key,
+				"value": value,
+			}).Trace("seen-by-userspace flag set for entry")
 		}
 		time.Sleep(time.Second)
 	}

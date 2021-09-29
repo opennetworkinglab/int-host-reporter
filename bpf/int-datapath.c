@@ -16,7 +16,8 @@ struct bridged_metadata {
     __u32 ingress_port;
     __u32 pre_nat_ip_dst;
     __u32 pre_nat_ip_src;
-    __u32 pad1;
+    __u16 pre_nat_proto;
+    __u16 pad0;
     __u16 pre_nat_sport;
     __u16 pre_nat_dport;
     __u16 seq_no;
@@ -346,6 +347,7 @@ int ingress(struct __sk_buff *skb)
     bmd.ingress_port = skb->ifindex;
     bmd.pre_nat_ip_src = ip_src;
     bmd.pre_nat_ip_dst = ip_dst;
+    bmd.pre_nat_proto = ip_protocol;
     bmd.pre_nat_dport = l4_dport;
     bmd.pre_nat_sport = l4_sport;
     bmd.seq_no = 0;
@@ -391,6 +393,7 @@ int egress(struct __sk_buff *skb)
 
     struct bridged_metadata *b = bpf_map_lookup_elem(&SHARED_MAP, &key);
     if (!b) {
+        bpf_printk("No bridged metadata found for hash=%x, ptr=%llu. Error?", key.flow_hash, key.pkt_ptr);
         return TC_ACT_UNSPEC;
     }
 
