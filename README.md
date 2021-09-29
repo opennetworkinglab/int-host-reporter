@@ -46,6 +46,11 @@ $ docker pull registry.aetherproject.org/tost/int-host-reporter:latest
 
 ## Deployment guide
 
+### Requirements
+
+- Kernel version v5.8 or higher. 
+- The INT Host Reporter DaemonSet requires to be run in the privileged mode with access to the host network (`hostNetwork: true`).
+
 ### Install the K8s cluster
 
 The installation of a Kubernetes cluster is basically out of scope of this document. 
@@ -138,5 +143,6 @@ to automate this process. You can find the guide how to use this script in [the 
 
 ## TODOs 
 
-- Only IPv4 endpoints are supported. 
+- Only IPv4 endpoints are supported.
 - INT Host Reporter only supports UDP/TCP packets; ICMP packets are not reported.
+- System flows (e.g. traffic between Kubernetes agents) are not reported.
