@@ -25,8 +25,8 @@ does a basic packet pre-processing and collects ingress metadata that is further
 - the **INT Host Reporter** application listens to the events from the `BPF_PERF_EVENT_ARRAY` map, converts
 the data plane reports into INT reports and sends the INT reports to the INT collector. 
   
-As mentioned before, the INT Host Reporter works in the CNI-independent fashion, so it can be integrated with any Kubernetes CNI. 
-We have already tested it with [Calico](https://docs.projectcalico.org/getting-started/kubernetes/) and [Cilium](https://cilium.io/). 
+As mentioned before, the INT Host Reporter works in the CNI-independent fashion, so the target goal is to enable using INT Host Reporter with _any_ Kubernetes CNI. 
+So far, we have tested the INT Host Reporter with [Calico](https://docs.projectcalico.org/getting-started/kubernetes/) and [Cilium](https://cilium.io/) and DeepInsight from Intel as an INT collector. 
 
 ## Building INT Host Reporter
 
@@ -54,9 +54,7 @@ $ docker pull registry.aetherproject.org/tost/int-host-reporter:latest
 ### Install the K8s cluster
 
 The installation of a Kubernetes cluster is basically out of scope of this document. 
-You should follow the instructions to deploy the Kubernetes cluster using the installer of your choice (see Kubernetes documentation). 
-
-However, we provide [the manual installation guide](./docs/k8s-cluster-installation.md) that can be used for the testing purpose. 
+You should follow the instructions to deploy the Kubernetes cluster using the installer of your choice ([see Kubernetes documentation](https://kubernetes.io/docs/setup/)).
 
 ### Create K8s secret
 
@@ -113,7 +111,7 @@ kube-system   int-host-reporter-ljwvs                    1/1     Running   0    
 kube-system   int-host-reporter-x48ps                    1/1     Running   0          9m11s   10.67.219.106   kubemaster   <none>           <none>
 ```
 
-For the CNIs that we have tested, there are no other, CNI-specific configuration steps required for the INT Host Reporter to work properly.
+For the CNIs that we have tested, there are no CNI-specific configuration steps required for the INT Host Reporter to work properly.
 Once the INT Host Reporter is successfully deployed, it should start sending INT reports to the collector. 
 
 ## Using INT Host Reporter with DeepInsight
@@ -127,21 +125,22 @@ the topology of a network. In particular, the DI topology should have the follow
 
 - `switches` - the list of switches in the network. In the case of host-INT, the virtual switch (CNI datapath) is also defined as the switch.
 Thus, this section should contain each network switch plus all the hosts, where the Kubernetes is running on.
-- `hosts` - the list of hosts in the network. In the case of host-INT, the Kubernetes nodes SHOULD NOT be defined as hosts (see the above bullet). 
-The `hosts` section should only contain servers attached to the network switches.
+- `hosts` - the list of hosts in the network. In the case of host-INT, the `hosts` section should contain all servers attached to the network,
+except those being used as K8s nodes.
 - `subnets` - the list of subnets in the network. In the case of host-INT, it should contain the subnet used to interconnect Kubernetes nodes, as well as
 the all the Pod subnets (the range of IP addresses, from which the Pod IPs are assigned from). Typically, a CNI will use a single IP subnet per Kubernetes worker,
   so there should be at least as many subnets defined as the number of Kubernetes workers.
-- `links` - the list of links in the network. It represents the links between `switches` and `hosts` as well as `switches` and `subnets`. 
-In the case of host-INT, Pods are not defined as `hosts`, but we use `subnets` to represent the group of Pods attached to the network. Therefore,
-the `links` section should contain the links between virtual switch and a Pod's subnet for each virtual interface configured on the Kubernetes node.
+- `links` - the list of links in the network. It represents links between 2 switches, between a switch and a host, or between a switch and a subnet -
+the last way of representing a link is an abstraction introduced by DeepInsight and means that we can access a subnet via a given interface of a switch.
+In the case of host-INT, Pods are not defined as `hosts`, but we use `subnet` to represent the group of Pods attached to the network. Therefore,
+the `links` section should contain the links between a virtual switch and a Pod's subnet for each virtual interface configured on the Kubernetes node.
 
 As a reference, we provide a sample DI topology file in in the `examples/deepinsight/` directory.
 
 However, building the DI topology file manually is time-consuming and error-prone. Therefore, we have created the `./di gen-topology` script
 to automate this process. You can find the guide how to use this script in [the bf-di-scripts repository](https://github.com/opennetworkinglab/bf-di-scripts/tree/master/4/utility#auto-generate-topology-for-end-host-int).
 
-## TODOs 
+## Current limitations 
 
 - Only IPv4 endpoints are supported.
 - INT Host Reporter only supports UDP/TCP packets; ICMP packets are not reported.
