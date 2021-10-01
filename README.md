@@ -135,10 +135,13 @@ the last way of representing a link is an abstraction introduced by DeepInsight 
 In the case of host-INT, Pods are not defined as `hosts`, but we use `subnet` to represent the group of Pods attached to the network. Therefore,
 the `links` section should contain the links between a virtual switch and a Pod's subnet for each virtual interface configured on the Kubernetes node.
 
-As a reference, we provide a sample DI topology file in in the `examples/deepinsight/` directory.
+As a reference, we provide a sample DI topology file in in the `examples/deepinsight/` directory. The sample DI topology file is visualized below. The dashed lines
+represents the abstraction of connections between switch and subnet. 
+
+![The visualization of a sample DI topology](docs/static/images/di-topo.png?raw=true "The visualization of a sample DI topology")
 
 However, building the DI topology file manually is time-consuming and error-prone. Therefore, we have created the `./di gen-topology` script
-to automate this process. You can find the guide how to use this script in [the bf-di-scripts repository](https://github.com/opennetworkinglab/bf-di-scripts/tree/master/4/utility#auto-generate-topology-for-end-host-int).
+to automate this process. You can find the guide how to use this script in [the sdfabric-utils repository](https://github.com/opennetworkinglab/sdfabric-utils).
 
 ## Current limitations 
 
