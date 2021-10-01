@@ -48,7 +48,7 @@ $ docker pull registry.aetherproject.org/tost/int-host-reporter:latest
 
 ### Requirements
 
-- Kernel version v5.8 or higher. 
+- Kernel version v5.11 or higher. 
 - The INT Host Reporter DaemonSet requires to be run in the privileged mode with access to the host network (`hostNetwork: true`).
 
 ### Install the K8s cluster
