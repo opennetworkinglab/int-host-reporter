@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ .Values.name }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    k8s-app: {{ .Values.name }}
+spec:
+  selector:
+    matchLabels:
+      name: {{ .Values.name }}
+  template:
+    metadata:
+      labels:
+        name: {{ .Values.name }}
+    spec:
+      nodeSelector:
+        kubernetes.io/os: linux
+      hostNetwork: true
+      tolerations:
+        # Make sure container gets scheduled on all nodes.
+        - effect: NoSchedule
+          operator: Exists
+      imagePullSecrets:
+        - name: {{ .Values.imagePullSecret }}
+      containers:
+        - name: {{ .Values.name }}
+          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: CNI
+              value: "{{ .Values.cni }}"
+            - name: DATA_INTERFACE
+              value: "{{ .Values.dataInterface }}"
+            - name: COLLECTOR
+              value: "{{ .Values.intCollector }}"
+            # we use Node IP as switch ID
+            - name: NODE_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+          command: ["int-host-reporter"]
+          args: ["--cni", "$(CNI)","--data-interface", "$(DATA_INTERFACE)", "--collector", "$(COLLECTOR)", "--switch-id", "$(NODE_IP)", "-f", "/etc/watchlist/watchlist.yaml"]
+          volumeMounts:
+            - name: bpffs
+              mountPath: /sys/fs/bpf
+            - name: watchlist
+              mountPath: /etc/watchlist/watchlist.yaml
+              subPath: watchlist.yaml
+          securityContext:
+            privileged: true
+            capabilities:
+              add: [ "NET_ADMIN","NET_RAW" ]
+      volumes:
+        - name: bpffs
+          hostPath:
+            path: /sys/fs/bpf
+        - name: watchlist
+          configMap:
+            name: watchlist-conf

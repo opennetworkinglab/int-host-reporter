@@ -1,0 +1,43 @@
+# Default values for int-host-reporter.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+nameOverride: "int-host-reporter"
+fullnameOverride: "int-host-reporter"
+
+name: int-host-reporter
+namespace: kube-system
+
+image:
+  repository: registry.aetherproject.org/tost/int-host-reporter
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: "latest"
+
+cni: cilium
+dataInterface: enp0s8
+intCollector: 192.168.33.50:30001
+
+imagePullSecret: aetherregistrysecret
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: "int-host-reporter"
+
+podAnnotations: {}
+
+podSecurityContext: {}
+  # fsGroup: 2000
+
+securityContext: {}
+  # capabilities:
+  #   drop:
+  #   - ALL
+  # readOnlyRootFilesystem: true
+  # runAsNonRoot: true
+  # runAsUser: 1000
