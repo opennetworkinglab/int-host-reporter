@@ -1,3 +1,6 @@
+// Copyright 2021-present Open Networking Foundation
+// SPDX-License-Identifier: GPL-2.0
+
 #include <stddef.h>
 #include <stdbool.h>
 #include <linux/bpf.h>
