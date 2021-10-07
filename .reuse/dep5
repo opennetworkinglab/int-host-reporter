@@ -1,0 +1,16 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: int-host-reporter
+Upstream-Contact: Tomasz Osiński <tomasz@opennetworking.org>
+Source: https://github.com/opennetworkinglab/int-host-reporter
+
+Files: go.mod go.sum
+Copyright: 2021-present Open Networking Foundation
+License: Apache-2.0
+
+Files: docs/static/images/*.png
+Copyright: 2021-present Open Networking Foundation
+License: Apache-2.0
+
+Files: examples/deepinsight/topo.json
+Copyright: 2021-present Open Networking Foundation
+License: Apache-2.0

@@ -1,3 +1,8 @@
+<!--
+Copyright 2021-present Open Networking Foundation
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # INT Host Reporter
 
 The In-Band Network Telemetry (INT) standard is a network telemetry solution providing an in-depth, per-packet network visibility. 
