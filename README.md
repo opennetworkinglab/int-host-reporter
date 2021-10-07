@@ -158,4 +158,4 @@ to automate this process. You can find the guide how to use this script in [the 
 ## License
 
 The user space components of INT Host Reporter are licensed under the [Apache License, Version 2.0](LICENSES/Apache-2.0.txt). The BPF code
-is licensed under the [General Public License, Version 2.0](LICENSES/GPL-2.0.txt). 
+is licensed under the [General Public License, Version 2.0](LICENSES/GPL-2.0-only.txt). 
