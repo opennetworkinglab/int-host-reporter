@@ -1,0 +1,11 @@
+---
+apiVersion: v2
+name: int-host-reporter
+version: 0.1.0
+kubeVersion: ">=1.16.0"
+type: application
+keywords:
+  - In-band Network Telemetry
+  - SDN
+  - eBPF
+description: Host-INT

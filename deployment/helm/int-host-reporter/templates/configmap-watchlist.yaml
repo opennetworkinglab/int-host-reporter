@@ -1,0 +1,18 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: int-watchlist
+  labels:
+    app: int-host-reporter
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+data:
+  watchlist.yaml: |
+    rules:
+    {{- range .Values.intWatchlistRules }}
+    - protocol: "{{ .protocol }}"
+      src-addr: "{{ .srcAddr }}"
+      dst-addr: "{{ .dstAddr }}"
+    {{- end }}
