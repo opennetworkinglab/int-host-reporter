@@ -149,3 +149,8 @@ to automate this process. You can find the guide how to use this script in [the 
 - Only IPv4 endpoints are supported.
 - INT Host Reporter only supports UDP/TCP packets; ICMP packets are not reported.
 - System flows (e.g. traffic between Kubernetes agents) are not reported.
+
+## License
+
+The user space components of INT Host Reporter are licensed under the [Apache License, Version 2.0](./LICENSE). The BPF code
+is licensed under the [General Public License, Version 2.0](./bpf/COPYING). 
