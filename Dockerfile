@@ -1,5 +1,6 @@
-# Copyright 2020-present Open Networking Foundation
-# SPDX-License-Identifier: LicenseRef-ONF-Member-1.0
+# Copyright 2021-present Open Networking Foundation
+# SPDX-License-Identifier: Apache-2.0
+
 FROM golang:1.15 as builder
 
 WORKDIR /go/src/app

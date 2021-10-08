@@ -1,3 +1,6 @@
+# Copyright 2021-present Open Networking Foundation
+# SPDX-License-Identifier: Apache-2.0
+
 # Sample INT watchlist configuration; only exact/LPM match fields are supported now.
 # All 3 fields (protocol, src-addr, dst-addr) are mandatory.
 rules:
