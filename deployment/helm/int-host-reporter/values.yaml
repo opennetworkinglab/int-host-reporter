@@ -2,9 +2,6 @@
 # This is a YAML-formatted file.
 # Declare variables to be passed into your templates.
 
-nameOverride: ""
-fullnameOverride: "int-host-reporter"
-
 name: int-host-reporter
 
 image:
@@ -38,30 +35,3 @@ intWatchlistRules:
   - protocol: "TCP"
     srcAddr: "192.168.33.11/32"
     dstAddr: "192.168.33.50/32"
-
-
-serviceAccount:
-  # Specifies whether a service account should be created
-  create: true
-  # Annotations to add to the service account
-  annotations: {}
-  # The name of the service account to use.
-  # If not set and create is true, a name is generated using the fullname template
-  name: "int-host-reporter"
-
-nodeSelector: {}
-
-tolerations: []
-
-affinity: {}
-
-podSecurityContext: {}
-  # fsGroup: 2000
-
-securityContext: {}
-  # capabilities:
-  #   drop:
-  #   - ALL
-  # readOnlyRootFilesystem: true
-  # runAsNonRoot: true
-  # runAsUser: 1000

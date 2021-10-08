@@ -128,11 +128,11 @@ You can customize your deployment by changing configuration in `deployments/helm
 
 To deploy `int-host-reporter` run the below command:
 
-`$ helm install --namespace kube-system <NAME> ./deployments/helm/int-host-reporter [-f <CUSTOM-VALUES>.yaml]`
+`$ helm install --namespace <NAMESPACE> <NAME> ./deployments/helm/int-host-reporter [-f <CUSTOM-VALUES>.yaml]`
 
 To uninstall the Helm deployment run:
 
-`$ helm uninstall --namespace kube-system <NAME>`
+`$ helm uninstall --namespace <NAMESPACE> <NAME>`
 
 ## Using INT Host Reporter with DeepInsight
 
