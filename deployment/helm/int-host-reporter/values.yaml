@@ -1,6 +1,5 @@
-# Default values for int-host-reporter.
-# This is a YAML-formatted file.
-# Declare variables to be passed into your templates.
+# Copyright 2021-present Open Networking Foundation
+# SPDX-License-Identifier: Apache-2.0
 
 name: int-host-reporter
 
