@@ -1,3 +1,8 @@
+<!--
+Copyright 2021-present Open Networking Foundation
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # INT Host Reporter
 
 The In-Band Network Telemetry (INT) standard is a network telemetry solution providing an in-depth, per-packet network visibility. 
@@ -170,3 +175,8 @@ to automate this process. You can find the guide how to use this script in [the 
 - System flows (e.g. traffic between Kubernetes agents) are not reported.
 - INT Host Reporeter doesn't work with CNIs making use of XDP hook yet. 
   If you want to use INT Host Reporter with Calico-eBPF or Cilium please make sure that XDP acceleration is disabled.
+
+## License
+
+The user space components of INT Host Reporter are licensed under the [Apache License, Version 2.0](LICENSES/Apache-2.0.txt). The BPF code
+is licensed under the [General Public License, Version 2.0](LICENSES/GPL-2.0-only.txt).
