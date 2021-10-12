@@ -24,11 +24,9 @@ spec:
         # Make sure container gets scheduled on all nodes.
         - effect: NoSchedule
           operator: Exists
-      imagePullSecrets:
-        - name: aetherregistrysecret
       containers:
         - name: int-host-reporter
-          image: registry.aetherproject.org/tost/int-host-reporter:latest
+          image: opennetworking/int-host-reporter:latest
           imagePullPolicy: "Always"
           env:
             - name: CNI
