@@ -20,7 +20,7 @@ jobs:
         run: docker build -t opennetworking/int-host-reporter:latest .
 
       - name: Login to DockerHub
-        run: docker login opennetworking --username ${{ secrets.DOCKERHUB_USERNAME }} --password ${{ secrets.DOCKERHUB_PASSWORD }}
+        run: docker login --username ${{ secrets.DOCKERHUB_USERNAME }} --password ${{ secrets.DOCKERHUB_PASSWORD }}
         if: github.ref == 'refs/heads/main'
 
       - name: Push image to DockerHub
