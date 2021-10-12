@@ -4,16 +4,15 @@
 name: int-host-reporter
 
 image:
-  repository: registry.aetherproject.org/tost/int-host-reporter
+  repository: opennetworking/int-host-reporter
   pullPolicy: Always
   # Overrides the image tag whose default is the chart appVersion.
   tag: "latest"
 
+# CNI in use, possible values: cilium, calico-ebpf, calico-iptables
 cni: cilium
 dataInterface: enp0s8
 intCollector: 192.168.33.50:30001
-
-imagePullSecret: aetherregistrysecret
 
 intWatchlistRules:
   - protocol: "UDP"

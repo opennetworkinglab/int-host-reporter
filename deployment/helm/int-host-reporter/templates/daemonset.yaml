@@ -24,8 +24,6 @@ spec:
         # Make sure container gets scheduled on all nodes.
         - effect: NoSchedule
           operator: Exists
-      imagePullSecrets:
-        - name: {{ .Values.imagePullSecret }}
       containers:
         - name: {{ .Values.name }}
           image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
