@@ -1,0 +1,35 @@
+# Copyright 2021-present Open Networking Foundation
+# SPDX-License-Identifier: Apache-2.0
+
+name: int-host-reporter
+
+image:
+  repository: opennetworking/int-host-reporter
+  pullPolicy: Always
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: "latest"
+
+# CNI in use, possible values: cilium, calico-ebpf, calico-iptables
+cni: cilium
+dataInterface: enp0s8
+intCollector: 192.168.33.50:30001
+
+intWatchlistRules:
+  - protocol: "UDP"
+    srcAddr: "192.168.99.50/32"
+    dstAddr: "192.168.99.20/32"
+  - protocol: "TCP"
+    srcAddr: "192.168.99.50/32"
+    dstAddr: "192.168.99.20/32"
+  - protocol: "TCP"
+    srcAddr: "192.168.99.20/32"
+    dstAddr: "192.168.99.50/32"
+  - protocol: "TCP"
+    srcAddr: "10.68.235.0/24"
+    dstAddr: "10.68.235.0/24"
+  - protocol: "TCP"
+    srcAddr: "192.168.33.50/32"
+    dstAddr: "192.168.33.11/32"
+  - protocol: "TCP"
+    srcAddr: "192.168.33.11/32"
+    dstAddr: "192.168.33.50/32"

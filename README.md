@@ -64,6 +64,8 @@ You should follow the instructions to deploy the Kubernetes cluster using the in
 
 ### Deploy INT Host Reporter
 
+#### Using Kubernetes deployment files
+
 Edit `deployment/kubernetes/inthostreporter.yaml` and configure the following variables:
 
 - `CNI` should define the Kubernetes CNI being used for the cluster. We currently support the following values: `cilium`, `calico-ebpf`, `calico-iptables`.
@@ -90,7 +92,24 @@ kube-system   int-host-reporter-x48ps                    1/1     Running   0    
 ```
 
 For the CNIs that we have tested, there are no CNI-specific configuration steps required for the INT Host Reporter to work properly.
-Once the INT Host Reporter is successfully deployed, it should start sending INT reports to the collector. 
+Once the INT Host Reporter is successfully deployed, it should start sending INT reports to the collector.
+
+You can uninstall `int-host-reporter` using:
+
+`$ kubectl delete -f deployment/kubernetes/inthostreporter.yaml`
+
+#### Using Helm
+
+We also provide Helm charts to deploy INT Host Reporter. 
+You can customize your deployment by changing configuration in `deployments/helm/int-host-reporter/Values.yaml`.
+
+To deploy `int-host-reporter` run the below command:
+
+`$ helm install --namespace <NAMESPACE> <NAME> ./deployments/helm/int-host-reporter [-f <CUSTOM-VALUES>.yaml]`
+
+To uninstall the Helm deployment run:
+
+`$ helm uninstall --namespace <NAMESPACE> <NAME>`
 
 ## Using INT Host Reporter with DeepInsight
 
@@ -126,8 +145,10 @@ to automate this process. You can find the guide how to use this script in [the 
 - Only IPv4 endpoints are supported.
 - INT Host Reporter only supports UDP/TCP packets; ICMP packets are not reported.
 - System flows (e.g. traffic between Kubernetes agents) are not reported.
+- INT Host Reporeter doesn't work with CNIs making use of XDP hook yet. 
+  If you want to use INT Host Reporter with Calico-eBPF or Cilium please make sure that XDP acceleration is disabled.
 
 ## License
 
 The user space components of INT Host Reporter are licensed under the [Apache License, Version 2.0](LICENSES/Apache-2.0.txt). The BPF code
-is licensed under the [General Public License, Version 2.0](LICENSES/GPL-2.0-only.txt). 
+is licensed under the [General Public License, Version 2.0](LICENSES/GPL-2.0-only.txt).

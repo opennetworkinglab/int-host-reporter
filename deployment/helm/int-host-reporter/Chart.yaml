@@ -1,0 +1,13 @@
+# Copyright 2021-present Open Networking Foundation
+# SPDX-License-Identifier: Apache-2.0
+---
+apiVersion: v2
+name: int-host-reporter
+version: 0.1.0
+kubeVersion: ">=1.16.0"
+type: application
+keywords:
+  - In-band Network Telemetry
+  - SDN
+  - eBPF
+description: Host-INT
