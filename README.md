@@ -43,10 +43,10 @@ $ docker build -t <IMAGE-NAME>:<TAG> .
 
 ## Downloading INT Host Reporter image
 
-Alternatively, the Docker image of INT Host Reporter can be downloaded from the Aether registry.
+Alternatively, the Docker image of INT Host Reporter can be downloaded from the ONF registry.
 
 ```bash
-$ docker pull registry.aetherproject.org/tost/int-host-reporter:latest
+$ docker pull opennetworking/int-host-reporter:latest
 ```
 
 ## Deployment guide
@@ -61,34 +61,6 @@ $ docker pull registry.aetherproject.org/tost/int-host-reporter:latest
 
 The installation of a Kubernetes cluster is basically out of scope of this document. 
 You should follow the instructions to deploy the Kubernetes cluster using the installer of your choice ([see Kubernetes documentation](https://kubernetes.io/docs/setup/)).
-
-### Create K8s secret
-
-We use private `registry.aetherproject.org` registry to pull the `int-host-reporter` image. To make the K8s deployment working
-you firstly have to set up a K8s secret.
-
-- Log in to `registry.aetherproject.org` using `docker login`. Your password will be stored unencrypted under `~/.docker/config.json`.
-- base64 encode your password:
-
-```
-$ cat ~/.docker/config.json | base64 -w0
-```
-
-- Copy the output and create the `aether-secret.yaml` file.
-
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: aetherregistrysecret
-data:
-  .dockerconfigjson: <base-64-encoded-json-here>
-type: kubernetes.io/dockerconfigjson
-```
-
-- Create the K8s secret based on the `aether-secret.yaml` file.
-
-`$ kubectl create -n kube-system -f aether-secret.yaml`
 
 ### Deploy INT Host Reporter
 
