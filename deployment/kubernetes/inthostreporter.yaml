@@ -20,10 +20,6 @@ spec:
       nodeSelector:
         kubernetes.io/os: linux
       hostNetwork: true
-      tolerations:
-        # Make sure container gets scheduled on all nodes.
-        - effect: NoSchedule
-          operator: Exists
       containers:
         - name: int-host-reporter
           image: opennetworking/int-host-reporter:latest
