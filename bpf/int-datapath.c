@@ -24,9 +24,10 @@ struct bridged_metadata {
     __u16 pre_nat_sport;
     __u16 pre_nat_dport;
     __u16 seq_no;
-    /* This field is used by userspace for the packet detection process.
+    /* This field is used by userspace for the packet drop detection process.
        The userspace sets this field if it sees the bridged metadata for the first time.
-       If the field is still set the second time the userspace sees it, the entire entry is removed by userspace. */
+       If the field is still set the second time the userspace sees it,
+       the entry is removed by userspace and the packet drop is reported. */
     __u16 seen_by_userspace;
 };
 
@@ -45,34 +46,12 @@ struct dp_event {
     __u64 eg_tstamp;
 } __packed;
 
-struct watchlist_proto_srcaddr_key {
-    __u32 prefixlen;
-    __u32 protocol;
-    __be32 addr;
-};
-
-struct watchlist_dstaddr_key {
-	__u32 prefixlen;
-	__be32 addr; // NBO
-};
-
 struct flow_filter_value {
     __u64 timestamp;
     __u32 ig_port;
     __u32 eg_port;
     __u32 flow_hash;
     __u32 hop_latency;
-};
-
-struct seqno_ingress {
-    __u64 ingress_timestamp;
-    __u32 ingress_port;
-    __u32 seq_no;
-    __u32 ip_src;
-    __u32 ip_dst;
-    __u32 protocol;
-    __u16 sport;
-    __u16 dport;
 };
 
 struct shared_map_key {
@@ -99,22 +78,6 @@ struct bpf_elf_map SEC("maps") INT_EVENTS_MAP = {
     .max_elem	= 2,
 };
 
-struct bpf_elf_map SEC("maps") WATCHLIST_PROTO_SRCADDR_MAP = {
-    .type = BPF_MAP_TYPE_HASH,
-    .size_key	= sizeof(struct watchlist_proto_srcaddr_key),
-    .size_value	= sizeof(__u64), // we support up to 64 rules now
-    .pinning	= PIN_GLOBAL_NS,
-    .max_elem	= 1024*1024,
-};
-
-struct bpf_elf_map SEC("maps") WATCHLIST_DSTADDR_MAP = {
-    .type = BPF_MAP_TYPE_HASH,
-    .size_key	= sizeof(struct watchlist_dstaddr_key),
-    .size_value	= sizeof(__u64), // we support up to 64 rules now
-    .pinning	= PIN_GLOBAL_NS,
-    .max_elem	= 1024*1024,
-};
-
 struct bpf_elf_map SEC("maps") INT_FLOW_FILTER1 = {
     .type = BPF_MAP_TYPE_ARRAY,
     .size_key	= sizeof(__u32),
@@ -130,56 +93,6 @@ struct bpf_elf_map SEC("maps") INT_FLOW_FILTER2 = {
     .pinning	= PIN_GLOBAL_NS,
     .max_elem	= 65536,
 };
-
-struct bpf_elf_map SEC("maps") SEQ_NO_INGRESS = {
-    .type = BPF_MAP_TYPE_HASH,
-    .size_key	= sizeof(__u32),  // flow hash
-    .size_value	= sizeof(struct seqno_ingress),  // sequence number
-    .pinning	= PIN_GLOBAL_NS,
-    .max_elem	= 511000,
-};
-
-struct bpf_elf_map SEC("maps") EGRESS_LAST_SEEN_SEQNO = {
-    .type = BPF_MAP_TYPE_HASH,
-    .size_key	= sizeof(__u32),  // flow hash
-    .size_value	= sizeof(__u16),  // sequence number
-    .pinning	= PIN_GLOBAL_NS,
-    .max_elem	= 511000,
-};
-
-// FIXME: for now, we don't apply INT watchlist in the data plane
-//  the code is kept here for the potential use in future
-static __always_inline bool matches_watchlist(__u32 protocol, __be32 saddr, __be32 daddr)
-{
-    struct watchlist_proto_srcaddr_key first_key = {
-        .prefixlen = 64,
-        .protocol = protocol,
-        .addr = saddr,
-    };
-
-    __u64 *entry1 = bpf_map_lookup_elem(&WATCHLIST_PROTO_SRCADDR_MAP, &first_key);
-    if (entry1 == NULL) {
-        return false;
-    }
-
-    struct watchlist_dstaddr_key second_key = {
-        .prefixlen = 32,
-        .addr = daddr,
-    };
-
-    __u64 *entry2 = bpf_map_lookup_elem(&WATCHLIST_DSTADDR_MAP, &second_key);
-    if (entry2 == NULL) {
-        return false;
-    }
-
-    // if there is matching rule, at least one bit will be set
-    if ((*entry1 & *entry2) != 0) {
-        bpf_printk("Watchlist Hit");
-        return true;
-    }
-
-    return false;
-}
 
 static __always_inline bool flow_filter_contains(void *map, __u32 hash, struct flow_filter_value *flow_info)
 {
@@ -314,13 +227,13 @@ int ingress(struct __sk_buff *skb)
     bpf_printk("l4_sport=%d, l4_dport=%d", bpf_htons(l4_sport), bpf_htons(l4_dport));
 
     struct shared_map_key key = {};
-    __builtin_memset(&key, 0, sizeof(struct shared_map_key));
+    __builtin_memset(&key, 0, sizeof(key));
     key.pkt_ptr = (__u64) skb;
     key.flow_hash = hash;
     key.padding = 0;
 
     struct bridged_metadata bmd = {};
-    __builtin_memset(&bmd, 0, sizeof(struct bridged_metadata));
+    __builtin_memset(&bmd, 0, sizeof(bmd));
     bmd.ingress_timestamp = ingress_timestamp;
     bmd.ingress_port = skb->ifindex;
     bmd.pre_nat_ip_src = ip_src;
