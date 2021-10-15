@@ -8,6 +8,7 @@
 #include <bpf/bpf_helpers.h>
 
 #include "common.h"
+#include "flags.h"
 
 #define SAMPLE_SIZE 128ul
 #define DP_EVENT_TRACE 1
@@ -55,7 +56,7 @@ struct flow_filter_value {
 };
 
 struct shared_map_key {
-    __u64 pkt_ptr;
+    __u64 packet_id;
     __u32 flow_hash;
     // padding is added to pass BPF verifier, see:
     // https://stackoverflow.com/questions/60601180/af-xdp-invalid-indirect-read-from-stack
@@ -152,7 +153,7 @@ int ingress(struct __sk_buff *skb)
 {
     __u64 ingress_timestamp = bpf_ktime_get_ns();
     __u32 hash = bpf_get_hash_recalc(skb);
-    bpf_printk("Ingress, skbptr=%llu, port=%d, hash=%x", skb, skb->ifindex, hash);
+    bpf_printk("Ingress, port=%d, hash=%x", skb->ifindex, hash);
 
     void *data = (void *)(long)skb->data;
     void *data_end = (void *)(long)skb->data_end;
@@ -228,7 +229,15 @@ int ingress(struct __sk_buff *skb)
 
     struct shared_map_key key = {};
     __builtin_memset(&key, 0, sizeof(key));
-    key.pkt_ptr = (__u64) skb;
+#if BMD_MODE == BMD_MODE_SKB_PTR
+    key.packet_id = (__u64) skb;
+#elif BMD_MODE == BMD_MODE_FLOW_HASH
+    key.packet_id = (__u64) hash;
+#else
+    __u8 rand_id = bpf_get_prandom_u32() % 255;
+    skb->cb[4] = rand_id << 24;
+    key.packet_id = (__u64) rand_id;
+#endif
     key.flow_hash = hash;
     key.padding = 0;
 
@@ -243,6 +252,9 @@ int ingress(struct __sk_buff *skb)
     bmd.pre_nat_sport = l4_sport;
     bmd.seq_no = 0;
 
+    bpf_printk("Saving bridged metadata under key: hash=%x, packet_id=%llx",
+               key.flow_hash, key.packet_id);
+
     bpf_map_update_elem(&SHARED_MAP, &key, &bmd, 0);
 
     return TC_ACT_UNSPEC;
@@ -253,7 +265,15 @@ int egress(struct __sk_buff *skb)
 {
     __u64 egress_timestamp = bpf_ktime_get_ns();
     __u32 hash = bpf_get_hash_recalc(skb);
-    bpf_printk("Egress, skbptr=%llu, port=%d, hash=%x", skb, skb->ifindex, hash);
+
+#if BMD_MODE == BMD_MODE_SKB_PTR
+    __u64 packet_id = (__u64) skb;
+#elif BMD_MODE == BMD_MODE_FLOW_HASH
+    __u64 packet_id = (__u64) hash;
+#else
+    __u64 packet_id = (__u64) (skb->cb[4] >> 24);
+#endif
+    bpf_printk("Egress, packet_id=%llx, port=%d, hash=%x", packet_id, skb->ifindex, hash);
 
     void *data = (void *)(long)skb->data;
     void *data_end = (void *)(long)skb->data_end;
@@ -279,12 +299,12 @@ int egress(struct __sk_buff *skb)
 
     struct shared_map_key key = {};
     __builtin_memset(&key, 0, sizeof(struct shared_map_key));
-    key.pkt_ptr = (__u64) skb;
+    key.packet_id = packet_id;
     key.flow_hash = hash;
 
     struct bridged_metadata *b = bpf_map_lookup_elem(&SHARED_MAP, &key);
     if (!b) {
-        bpf_printk("No bridged metadata found for hash=%x, ptr=%llu.", key.flow_hash, key.pkt_ptr);
+        bpf_printk("No bridged metadata found for hash=%x, packet_id=%llx.", key.flow_hash, key.packet_id);
         return TC_ACT_UNSPEC;
     }
 
@@ -312,7 +332,7 @@ int egress(struct __sk_buff *skb)
     }
 
     bpf_map_delete_elem(&SHARED_MAP, &key);
-    bpf_printk("Delete element from SHARED_MAP: ptr=%llu, hash=%x", key.pkt_ptr, key.flow_hash);
+    bpf_printk("Delete element from SHARED_MAP: packet_id=%llx, hash=%x", key.packet_id, key.flow_hash);
 
     return TC_ACT_UNSPEC;
 }

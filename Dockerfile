@@ -14,7 +14,7 @@ COPY --from=builder /go/src/app .
 COPY --from=builder /go/bin/int-host-reporter /usr/local/bin
 
 RUN apt update
-RUN apt install -y iproute2 clang libbpf-dev llvm
+RUN apt install -y iproute2 clang-10 libbpf-dev llvm-10
 RUN ./scripts/compile-bpf.sh
 
 CMD ["int-host-reporter"]
