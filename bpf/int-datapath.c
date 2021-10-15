@@ -231,6 +231,8 @@ int ingress(struct __sk_buff *skb)
     __builtin_memset(&key, 0, sizeof(key));
 #if BMD_MODE == BMD_MODE_SKB_PTR
     key.packet_id = (__u64) skb;
+#elif BMD_MODE == BMD_MODE_FLOW_HASH
+    key.packet_id = (__u64) hash;
 #else
     __u8 rand_id = bpf_get_prandom_u32() % 255;
     skb->cb[4] = rand_id << 24;
@@ -261,13 +263,16 @@ int ingress(struct __sk_buff *skb)
 SEC("classifier/egress")
 int egress(struct __sk_buff *skb)
 {
-    #if BMD_MODE == BMD_MODE_SKB_PTR
-        __u64 packet_id = (__u64) skb;
-    #else
-        __u64 packet_id = (__u64) (skb->cb[4] >> 24);
-    #endif
     __u64 egress_timestamp = bpf_ktime_get_ns();
     __u32 hash = bpf_get_hash_recalc(skb);
+
+#if BMD_MODE == BMD_MODE_SKB_PTR
+    __u64 packet_id = (__u64) skb;
+#elif BMD_MODE == BMD_MODE_FLOW_HASH
+    __u64 packet_id = (__u64) hash;
+#else
+    __u64 packet_id = (__u64) (skb->cb[4] >> 24);
+#endif
     bpf_printk("Egress, packet_id=%llx, port=%d, hash=%x", packet_id, skb->ifindex, hash);
 
     void *data = (void *)(long)skb->data;
