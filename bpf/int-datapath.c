@@ -8,6 +8,7 @@
 #include <bpf/bpf_helpers.h>
 
 #include "common.h"
+#include "flags.h"
 
 #define SAMPLE_SIZE 128ul
 #define DP_EVENT_TRACE 1
@@ -55,7 +56,7 @@ struct flow_filter_value {
 };
 
 struct shared_map_key {
-    __u64 pkt_ptr;
+    __u64 packet_id;
     __u32 flow_hash;
     // padding is added to pass BPF verifier, see:
     // https://stackoverflow.com/questions/60601180/af-xdp-invalid-indirect-read-from-stack
@@ -228,7 +229,13 @@ int ingress(struct __sk_buff *skb)
 
     struct shared_map_key key = {};
     __builtin_memset(&key, 0, sizeof(key));
-    key.pkt_ptr = (__u64) skb;
+#if BMD_MODE == BMD_MODE_SKB_PTR
+    key.packet_id = (__u64) skb;
+#else
+    __u32 rand_id = bpf_get_prandom_u32();
+    key.packet_id = (__u64) rand_id;
+    skb->cb[4] = rand_id;
+#endif
     key.flow_hash = hash;
     key.padding = 0;
 
@@ -279,12 +286,16 @@ int egress(struct __sk_buff *skb)
 
     struct shared_map_key key = {};
     __builtin_memset(&key, 0, sizeof(struct shared_map_key));
-    key.pkt_ptr = (__u64) skb;
+#if BMD_MODE == BMD_MODE_SKB_PTR
+    key.packet_id = (__u64) skb;
+#else
+    key.packet_id = (__u64) skb->cb[4];
+#endif
     key.flow_hash = hash;
 
     struct bridged_metadata *b = bpf_map_lookup_elem(&SHARED_MAP, &key);
     if (!b) {
-        bpf_printk("No bridged metadata found for hash=%x, ptr=%llu.", key.flow_hash, key.pkt_ptr);
+        bpf_printk("No bridged metadata found for hash=%x, packet_id=%llu.", key.flow_hash, key.packet_id);
         return TC_ACT_UNSPEC;
     }
 
@@ -312,7 +323,7 @@ int egress(struct __sk_buff *skb)
     }
 
     bpf_map_delete_elem(&SHARED_MAP, &key);
-    bpf_printk("Delete element from SHARED_MAP: ptr=%llu, hash=%x", key.pkt_ptr, key.flow_hash);
+    bpf_printk("Delete element from SHARED_MAP: packet_id=%llu, hash=%x", key.packet_id, key.flow_hash);
 
     return TC_ACT_UNSPEC;
 }
