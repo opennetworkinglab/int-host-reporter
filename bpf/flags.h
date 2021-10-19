@@ -13,3 +13,6 @@
 #define BMD_MODE BMD_MODE_SKB_CB
 #endif
 
+#ifndef __NR_CPUS__
+#define __NR_CPUS__ 1
+#endif
