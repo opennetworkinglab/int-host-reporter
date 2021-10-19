@@ -1,3 +1,6 @@
+// Copyright 2021-present Open Networking Foundation
+// SPDX-License-Identifier: Apache-2.0
+
 package loader
 
 import (
@@ -19,11 +22,6 @@ const (
 var (
 	standardCFlags = []string{"-O2", "-target", "bpf",
 		fmt.Sprintf("-D__NR_CPUS__=%d", common.GetNumPossibleCPUs()),
-		//"-Wall", "-Wextra", "-Werror", "-Wshadow",
-		//"-Wno-address-of-packed-member",
-		//"-Wno-unknown-warning-option",
-		//"-Wno-gnu-variable-sized-type-not-at-end",
-		//"-Wdeclaration-after-statement",
 	}
 
 	standardLDFlags = []string{"-march=bpf", "-filetype=obj"}
