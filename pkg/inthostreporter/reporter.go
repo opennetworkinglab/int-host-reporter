@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/opennetworkinglab/int-host-reporter/pkg/common"
 	"github.com/opennetworkinglab/int-host-reporter/pkg/dataplane"
+	"github.com/opennetworkinglab/int-host-reporter/pkg/loader"
 	"github.com/opennetworkinglab/int-host-reporter/pkg/watchlist"
 	log "github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
@@ -125,12 +126,17 @@ func (itr *IntHostReporter) loadBPFProgram(ifName string) error {
 }
 
 func (itr *IntHostReporter) attachINTProgramsAtStartup() error {
+	err := loader.CompileDatapath()
+	if err != nil {
+		return fmt.Errorf("failed to compile datapath: %v", err)
+	}
+
 	noProgramsAttached := true
 	links, _ := netlink.LinkList()
 	for _, link := range links {
 		if link.Attrs().Name == *DataInterface || common.IsInterfaceManagedByCNI(link.Attrs().Name) {
 			log.Debugf("Trying to load BPF program to %s", link.Attrs().Name)
-			err := itr.loadBPFProgram(link.Attrs().Name)
+			err = itr.loadBPFProgram(link.Attrs().Name)
 			if err != nil {
 				log.Errorf("Failed to load BPF program to %s: %v", link.Attrs().Name, err)
 			} else {

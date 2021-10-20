@@ -76,7 +76,7 @@ struct bpf_elf_map SEC("maps") INT_EVENTS_MAP = {
     .size_key	= sizeof(__u32),
     .size_value	= sizeof(__u32),
     .pinning	= PIN_GLOBAL_NS,
-    .max_elem	= 2,
+    .max_elem	= __NR_CPUS__,
 };
 
 struct bpf_elf_map SEC("maps") INT_FLOW_FILTER1 = {

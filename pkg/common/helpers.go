@@ -5,8 +5,16 @@ package common
 
 import (
 	"fmt"
+	log "github.com/sirupsen/logrus"
+	"io"
 	"net"
+	"os"
 	"strings"
+)
+
+const (
+	// PossibleCPUSysfsPath is used to retrieve the number of CPUs for per-CPU maps.
+	PossibleCPUSysfsPath = "/sys/devices/system/cpu/possible"
 )
 
 func ToNetIP(val uint32) net.IP {
@@ -57,4 +65,44 @@ func IsInterfaceManagedByCNI(intfName string) bool {
 	default:
 		return false
 	}
+}
+
+func GetNumPossibleCPUs() int {
+	f, err := os.Open(PossibleCPUSysfsPath)
+	if err != nil {
+		log.WithError(err).Errorf("unable to open %q", PossibleCPUSysfsPath)
+		return 0
+	}
+	defer f.Close()
+
+	return getNumPossibleCPUsFromReader(f)
+}
+
+func getNumPossibleCPUsFromReader(r io.Reader) int {
+	out, err := io.ReadAll(r)
+	if err != nil {
+		log.WithError(err).Errorf("unable to read %q to get CPU count", PossibleCPUSysfsPath)
+		return 0
+	}
+
+	var start, end int
+	count := 0
+	for _, s := range strings.Split(string(out), ",") {
+		// Go's scanf will return an error if a format cannot be fully matched.
+		// So, just ignore it, as a partial match (e.g. when there is only one
+		// CPU) is expected.
+		n, err := fmt.Sscanf(s, "%d-%d", &start, &end)
+
+		switch n {
+		case 0:
+			log.WithError(err).Errorf("failed to scan %q to retrieve number of possible CPUs!", s)
+			return 0
+		case 1:
+			count++
+		default:
+			count += (end - start + 1)
+		}
+	}
+
+	return count
 }

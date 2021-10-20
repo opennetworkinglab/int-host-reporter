@@ -83,6 +83,8 @@ func (value SharedMapValue) String() string {
 func init() {
 	// clear SHARED_MAP; ignore err
 	os.Remove(common.DefaultMapRoot + "/" + common.DefaultMapPrefix + "/" + common.INTSharedMap)
+	// clear INT_EVENTS_MAP; ignore err
+	os.Remove(common.DefaultMapRoot + "/" + common.DefaultMapPrefix + "/" + common.INTEventsMap)
 }
 
 func NewDataPlaneInterface() *DataPlaneInterface {
