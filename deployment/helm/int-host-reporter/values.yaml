@@ -13,6 +13,8 @@ image:
 cni: cilium
 dataInterface: enp0s8
 intCollector: 192.168.33.50:30001
+# Log level values: info, debug, trace
+logLevel: info
 
 intWatchlistRules:
   - protocol: "UDP"
