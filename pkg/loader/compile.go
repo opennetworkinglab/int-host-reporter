@@ -15,8 +15,7 @@ import (
 
 const (
 	compiler = "clang-10"
-	linker = "llc-10"
-
+	linker   = "llc-10"
 )
 
 var (
@@ -26,6 +25,10 @@ var (
 
 	standardLDFlags = []string{"-march=bpf", "-filetype=obj"}
 )
+
+type CompileOptions struct {
+	Debug bool
+}
 
 func prepareCmdPipes(cmd *exec.Cmd) (io.ReadCloser, io.ReadCloser, error) {
 	stdout, err := cmd.StdoutPipe()
@@ -42,7 +45,7 @@ func prepareCmdPipes(cmd *exec.Cmd) (io.ReadCloser, io.ReadCloser, error) {
 	return stdout, stderr, nil
 }
 
-func CompileDatapath() error {
+func CompileDatapath(options CompileOptions) error {
 	compilerArgs := make([]string, 0, 16)
 
 	versionCmd := exec.Command(compiler, "--version")
@@ -61,6 +64,9 @@ func CompileDatapath() error {
 		linker:   string(linkerVersion),
 	}).Debug("Compiling datapath")
 
+	if options.Debug {
+		compilerArgs = append(compilerArgs, "-DDEBUG")
+	}
 	compilerArgs = append(compilerArgs, "-emit-llvm")
 	compilerArgs = append(compilerArgs, "-g")
 	compilerArgs = append(compilerArgs, standardCFlags...)

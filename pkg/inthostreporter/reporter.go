@@ -126,7 +126,11 @@ func (itr *IntHostReporter) loadBPFProgram(ifName string) error {
 }
 
 func (itr *IntHostReporter) attachINTProgramsAtStartup() error {
-	err := loader.CompileDatapath()
+	options := loader.CompileOptions{}
+	if log.GetLevel() == log.TraceLevel || log.GetLevel() == log.DebugLevel {
+		options.Debug = true
+	}
+	err := loader.CompileDatapath(options)
 	if err != nil {
 		return fmt.Errorf("failed to compile datapath: %v", err)
 	}

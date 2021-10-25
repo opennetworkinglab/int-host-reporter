@@ -22,9 +22,11 @@ spec:
       hostNetwork: true
       containers:
         - name: int-host-reporter
-          image: opennetworking/int-host-reporter:latest
-          imagePullPolicy: "Always"
+          image: opennetworking/int-host-reporter:cilium-dev
+          imagePullPolicy: "IfNotPresent"
           env:
+            - name: LOG_LEVEL
+              value: "info"
             - name: CNI
               value: "cilium"
             - name: DATA_INTERFACE
@@ -37,7 +39,7 @@ spec:
                 fieldRef:
                   fieldPath: status.hostIP
           command: ["int-host-reporter"]
-          args: ["--cni", "$(CNI)","--data-interface", "$(DATA_INTERFACE)", "--collector", "$(COLLECTOR)", "--switch-id", "$(NODE_IP)", "-f", "/etc/watchlist/watchlist.yaml"]
+          args: ["--cni", "$(CNI)", "--log-level", "$(LOG_LEVEL)","--data-interface", "$(DATA_INTERFACE)", "--collector", "$(COLLECTOR)", "--switch-id", "$(NODE_IP)", "-f", "/etc/watchlist/watchlist.yaml"]
           volumeMounts:
             - name: bpffs
               mountPath: /sys/fs/bpf
