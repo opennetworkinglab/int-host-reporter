@@ -126,89 +126,104 @@ func (d *DataPlaneInterface) Init() error {
 func (d *DataPlaneInterface) Start(stopCtx context.Context) error {
 	defer func() {
 		d.dataPlaneReader.Close()
-		d.dataPlaneReader = nil
 	}()
 	log.Infof("Listening for perf events from %s", d.perfEventArray.String())
-	// TODO (tomasz): break loop with cancel ctx
 	for {
-		record, err := d.dataPlaneReader.Read()
-		switch {
-		case err != nil:
-			{
-				log.Warn("Error received while reading from perf buffer")
-				// TODO (tomasz): log error here
+		select {
+		case <-stopCtx.Done():
+			log.Info("Data plane interface has stopped listening to events..")
+			return nil
+		default: {
+			record, err := d.dataPlaneReader.Read()
+			if err != nil {
+				log.Warnf("Error received while reading from perf buffer: %v", err)
 				continue
 			}
+			d.processPerfRecord(record)
 		}
-		d.processPerfRecord(record)
+		}
 	}
 }
 
-func (d *DataPlaneInterface) DetectPacketDrops() {
-	log.Debug("Starting packet drop detection process..")
-	for {
-		var key SharedMapKey
-		var value SharedMapValue
-		iter := d.sharedMap.Iterate()
-		for iter.Next(&key, &value) {
-			err := d.sharedMap.Lookup(&key, &value)
+func (d *DataPlaneInterface) Stop() {
+	d.dataPlaneReader.Close()
+}
+
+func (d *DataPlaneInterface) doDetectPacketDrops() {
+	var key SharedMapKey
+	var value SharedMapValue
+	iter := d.sharedMap.Iterate()
+	for iter.Next(&key, &value) {
+		err := d.sharedMap.Lookup(&key, &value)
+		if err != nil {
+			log.Debugf("failed to lookup from shared map: %v", err)
+			continue
+		}
+
+		if value.SeenByUserspace == 1 {
+			pktMd := PacketMetadata{
+				DataPlaneReport: &DataPlaneReport{
+					Type:                  DropReport,
+					Reason:                common.DropReasonUnknown,
+					PreNATSourceIP:        common.ToNetIP(value.PreNATIPSource),
+					PreNATDestinationIP:   common.ToNetIP(value.PreNATIPDest),
+					PreNATSourcePort:      bits.ReverseBytes16(value.PreNATSourcePort),
+					PreNATDestinationPort: bits.ReverseBytes16(value.PreNATDestPort),
+					IngressPort:           value.IngressPort,
+					EgressPort:            0,
+					IngressTimestamp:      value.IngressTimestamp,
+					EgressTimestamp:       0,
+				},
+				EncapMode: "",
+				DstAddr:   net.IPv4zero,
+				SrcAddr:   net.IPv4zero,
+				Protocol:  uint8(value.PreNATProto),
+				DstPort:   0,
+				SrcPort:   0,
+			}
+
+			d.eventsChannel <- pktMd
+
+			// this is the second time we see this entry,
+			// so it's very likely that this packet haven't reached any egress program.
+			// Therefore, we can delete it from map and report a potential packet drop.
+			err = d.sharedMap.Delete(&key)
 			if err != nil {
-				log.Debugf("failed to lookup from shared map: %v", err)
-				continue
+				log.Debugf("failed to delete key %v from shared map: %v", key, err)
 			}
-
-			if value.SeenByUserspace == 1 {
-				pktMd := PacketMetadata{
-					DataPlaneReport: &DataPlaneReport{
-						Type:                  DropReport,
-						Reason:                common.DropReasonUnknown,
-						PreNATSourceIP:        common.ToNetIP(value.PreNATIPSource),
-						PreNATDestinationIP:   common.ToNetIP(value.PreNATIPDest),
-						PreNATSourcePort:      bits.ReverseBytes16(value.PreNATSourcePort),
-						PreNATDestinationPort: bits.ReverseBytes16(value.PreNATDestPort),
-						IngressPort:           value.IngressPort,
-						EgressPort:            0,
-						IngressTimestamp:      value.IngressTimestamp,
-						EgressTimestamp:       0,
-					},
-					EncapMode: "",
-					DstAddr:   net.IPv4zero,
-					SrcAddr:   net.IPv4zero,
-					Protocol:  uint8(value.PreNATProto),
-					DstPort:   0,
-					SrcPort:   0,
-				}
-
-				d.eventsChannel <- pktMd
-
-				// this is the second time we see this entry,
-				// so it's very likely that this packet haven't reached any egress program.
-				// Therefore, we can delete it from map and report a potential packet drop.
-				err = d.sharedMap.Delete(&key)
-				if err != nil {
-					log.Debugf("failed to delete key %v from shared map: %v", key, err)
-				}
-				log.WithFields(log.Fields{
-					"key": key,
-					"value": value,
-				}).Trace("Deleted entry from map")
-				continue
-			}
-
-			value.SeenByUserspace = 1
-
-			err = d.sharedMap.Put(&key, &value)
-			if err != nil {
-				log.Debugf("Failed to set seen-by-userspace flag")
-				continue
-			}
-
 			log.WithFields(log.Fields{
 				"key": key,
 				"value": value,
-			}).Trace("seen-by-userspace flag set for entry")
+			}).Trace("Deleted entry from map")
+			continue
 		}
-		time.Sleep(time.Second)
+
+		value.SeenByUserspace = 1
+
+		err = d.sharedMap.Put(&key, &value)
+		if err != nil {
+			log.Debugf("Failed to set seen-by-userspace flag")
+			continue
+		}
+
+		log.WithFields(log.Fields{
+			"key": key,
+			"value": value,
+		}).Trace("seen-by-userspace flag set for entry")
+	}
+	time.Sleep(time.Second)
+}
+
+func (d *DataPlaneInterface) DetectPacketDrops(stopCtx context.Context) {
+	log.Debug("Starting packet drop detection process..")
+	for {
+		select {
+		case <-stopCtx.Done():
+			log.Info("Packet drop detection has stopped..")
+			return
+		default:
+			d.doDetectPacketDrops()
+		}
 	}
 }
 

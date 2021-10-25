@@ -12,7 +12,10 @@ import (
 	"github.com/opennetworkinglab/int-host-reporter/pkg/watchlist"
 	log "github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
+	"os"
 	"os/exec"
+	"os/signal"
+	"syscall"
 	"time"
 )
 
@@ -21,11 +24,13 @@ const (
 )
 
 type IntHostReporter struct {
-	ctx              context.Context
-	perfReaderCancel context.CancelFunc
+	ctx        context.Context
+	cancelFunc context.CancelFunc
 
 	reportHandler      *ReportHandler
 	dataPlaneInterface *dataplane.DataPlaneInterface
+
+	signals chan os.Signal
 }
 
 func NewIntHostReporter(watchlist *watchlist.INTWatchlist) *IntHostReporter {
@@ -33,6 +38,7 @@ func NewIntHostReporter(watchlist *watchlist.INTWatchlist) *IntHostReporter {
 	itr.ctx = context.Background()
 	itr.dataPlaneInterface = dataplane.NewDataPlaneInterface()
 	itr.reportHandler = NewReportHandler(itr.dataPlaneInterface)
+	itr.signals = make(chan os.Signal, 1)
 	itr.initWatchlist(watchlist)
 	return itr
 }
@@ -125,6 +131,34 @@ func (itr *IntHostReporter) loadBPFProgram(ifName string) error {
 	return nil
 }
 
+func (itr *IntHostReporter) removeBPFProgram(ifName string) error {
+	loaderProg := "tc"
+	baseCmd := []string{"filter", "del", "dev", ifName}
+	clearIngressCmd := append(baseCmd, "ingress")
+	clearEgressCmd := append(baseCmd, "egress")
+
+	clearIngressCmd = append(clearIngressCmd, []string{"prio", "1", "handle", "3", "bpf"}...)
+	clearEgressCmd = append(clearEgressCmd, []string{"prio", "1", "handle", "3", "bpf"}...)
+
+	cmd := exec.Command(loaderProg, clearIngressCmd...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Debugf("failed to remove ingress filter from interface %s: %v",
+			ifName, string(out))
+		return err
+	}
+
+	cmd = exec.Command(loaderProg, clearEgressCmd...)
+	out, err = cmd.CombinedOutput()
+	if err != nil {
+		log.Debugf("failed to remove egress filter from interface %s: %v",
+			ifName, string(out))
+		return err
+	}
+
+	return nil
+}
+
 func (itr *IntHostReporter) attachINTProgramsAtStartup() error {
 	options := loader.CompileOptions{}
 	if log.GetLevel() == log.TraceLevel || log.GetLevel() == log.DebugLevel {
@@ -157,6 +191,21 @@ func (itr *IntHostReporter) attachINTProgramsAtStartup() error {
 	return nil
 }
 
+func (itr *IntHostReporter) clearINTPrograms() (err error) {
+	links, _ := netlink.LinkList()
+	for _, link := range links {
+		if link.Attrs().Name == *DataInterface || common.IsInterfaceManagedByCNI(link.Attrs().Name) {
+			log.Debugf("Clearing BPF program from %s", link.Attrs().Name)
+			err = itr.removeBPFProgram(link.Attrs().Name)
+		}
+	}
+
+	if err == nil {
+		log.Info("Successfully removed BPF programs from all interfaces.")
+	}
+	return err
+}
+
 func interfaceHasINTProgram(link netlink.Link, handle uint32) bool {
 	filters, err := netlink.FilterList(link, handle)
 	if err != nil {
@@ -175,29 +224,38 @@ func interfaceHasINTProgram(link netlink.Link, handle uint32) bool {
 // This function will (re-)load INT programs in two cases:
 // 1) when a new container's interface is created
 // 2) when a CNI will clear INT programs from a container's interface
-func (itr *IntHostReporter) reloadINTProgramsIfNeeded() {
+func (itr *IntHostReporter) reloadINTProgramsIfNeeded(stopCtx context.Context) {
 	for {
-		links, _ := netlink.LinkList()
-		for _, link := range links {
-			if link.Attrs().Name == *DataInterface ||
-				common.IsInterfaceManagedByCNI(link.Attrs().Name) {
-				if !interfaceHasINTProgram(link, netlink.HANDLE_MIN_INGRESS) ||
-					!interfaceHasINTProgram(link, netlink.HANDLE_MIN_EGRESS) {
-					log.Debugf("Re-loading INT eBPF program to interface %v", link.Attrs().Name)
-					err := itr.loadBPFProgram(link.Attrs().Name)
-					if err != nil {
-						log.Errorf("Failed to load BPF program to %s: %v", link.Attrs().Name, err)
+		select {
+		case <-stopCtx.Done():
+			return
+		default: {
+			links, _ := netlink.LinkList()
+			for _, link := range links {
+				if link.Attrs().Name == *DataInterface ||
+					common.IsInterfaceManagedByCNI(link.Attrs().Name) {
+					if !interfaceHasINTProgram(link, netlink.HANDLE_MIN_INGRESS) ||
+						!interfaceHasINTProgram(link, netlink.HANDLE_MIN_EGRESS) {
+						log.Debugf("Re-loading INT eBPF program to interface %v", link.Attrs().Name)
+						err := itr.loadBPFProgram(link.Attrs().Name)
+						if err != nil {
+							log.Errorf("Failed to load BPF program to %s: %v", link.Attrs().Name, err)
+						}
 					}
 				}
 			}
+			time.Sleep(time.Second)
 		}
-		time.Sleep(time.Second)
+		}
 	}
 }
 
 func (itr *IntHostReporter) Start() error {
-	dataPlaneInterfaceCtx, cancel := context.WithCancel(itr.ctx)
-	itr.perfReaderCancel = cancel
+	// Setup signal handler.
+	signal.Notify(itr.signals, syscall.SIGINT, syscall.SIGKILL, syscall.SIGTERM)
+
+	ctx, cancel := context.WithCancel(itr.ctx)
+	itr.cancelFunc = cancel
 
 	err := itr.attachINTProgramsAtStartup()
 	if err != nil {
@@ -214,14 +272,38 @@ func (itr *IntHostReporter) Start() error {
 		return err
 	}
 
-	go itr.reloadINTProgramsIfNeeded()
-	go itr.dataPlaneInterface.DetectPacketDrops()
+	go itr.reloadINTProgramsIfNeeded(ctx)
+	go itr.dataPlaneInterface.DetectPacketDrops(ctx)
+
+	go itr.HandleSignals()
 
 	// Blocking
-	err = itr.dataPlaneInterface.Start(dataPlaneInterfaceCtx)
+	err = itr.dataPlaneInterface.Start(ctx)
 	if err != nil {
 		return err
 	}
 
 	return nil
+}
+
+func (itr *IntHostReporter) Stop() (err error) {
+	itr.cancelFunc()
+	itr.reportHandler.Stop()
+	err = itr.clearINTPrograms()
+	itr.dataPlaneInterface.Stop()
+	close(itr.signals)
+	return
+}
+
+func (itr *IntHostReporter) HandleSignals() {
+	for {
+		sig, ok := <-itr.signals
+		if !ok {
+			return
+		}
+		log.Debugf("Got signal %v", sig)
+		if err := itr.Stop(); err != nil {
+			log.Fatal("Error stopping INT Host Reporter:", err)
+		}
+	}
 }

@@ -101,6 +101,11 @@ func (rh *ReportHandler) Start() error {
 	return nil
 }
 
+func (rh *ReportHandler) Stop() {
+	rh.udpConn.Close()
+	close(rh.reportsChannel)
+}
+
 func (rh *ReportHandler) applyWatchlist(pktMd dataplane.PacketMetadata) bool {
 	packetLog := log.Fields{
 		"protocol" : pktMd.Protocol,

@@ -66,4 +66,5 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error while running INT Host Reporter: %v", err)
 	}
+	log.Info("INT Host Reporter stopped.")
 }
