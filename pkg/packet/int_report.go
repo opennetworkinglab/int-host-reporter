@@ -203,7 +203,7 @@ func dropReasonConvertFromDatapathToINT(datapathCode uint8) uint8 {
 	}
 }
 
-func getINTFixedHeader(pktMd dataplane.PacketMetadata, hwID uint8, seqNo uint32) INTReportFixedHeader {
+func getINTFixedHeader(pktMd *dataplane.PacketMetadata, hwID uint8, seqNo uint32) INTReportFixedHeader {
 	return INTReportFixedHeader{
 		Version:                   0,
 		NProto:                    0,
@@ -216,7 +216,7 @@ func getINTFixedHeader(pktMd dataplane.PacketMetadata, hwID uint8, seqNo uint32)
 	}
 }
 
-func getINTCommonHeader(pktMd dataplane.PacketMetadata, switchID uint32) INTCommonReportHeader {
+func getINTCommonHeader(pktMd *dataplane.PacketMetadata, switchID uint32) INTCommonReportHeader {
 	return INTCommonReportHeader{
 		SwitchID:    switchID,
 		IngressPort: uint16(pktMd.DataPlaneReport.IngressPort),
@@ -277,7 +277,7 @@ func constructPayloadFromFiveTuple(srcAddr, dstAddr net.IP, protocol uint8, srcP
 	return buf.Bytes(), nil
 }
 
-func getINTPayload(pktMd dataplane.PacketMetadata) gopacket.Payload {
+func getINTPayload(pktMd *dataplane.PacketMetadata) gopacket.Payload {
 	if len(pktMd.DataPlaneReport.Payload) == 0 {
 		payload, err := constructPayloadFromFiveTuple(pktMd.SrcAddr,
 			pktMd.DstAddr, pktMd.Protocol, pktMd.SrcPort, pktMd.DstPort)
@@ -300,18 +300,58 @@ func getINTPayload(pktMd dataplane.PacketMetadata) gopacket.Payload {
 		payload = payload[SizeEthernetIPv4UDPVXLAN:]
 	}
 
-	if !pktMd.DataPlaneReport.PreNATDestinationIP.IsUnspecified() && pktMd.DataPlaneReport.PreNATDestinationPort != 0 {
-		// if a data plane provides pre-NAT IP and port we should restore an original IP and port
+	if !pktMd.MatchedPostNAT && !pktMd.DataPlaneReport.PreNATDestinationIP.IsUnspecified() &&
+		pktMd.DataPlaneReport.PreNATDestinationPort != 0 &&
+		!pktMd.DataPlaneReport.PreNATSourceIP.IsUnspecified() &&
+		pktMd.DataPlaneReport.PreNATSourcePort != 0 {
+		// if a watchlist matched on pre-NAT and data plane provides pre-NAT IP and port we should restore an original IP and port
+		// FIXME: this should be changed once INT collector will have support for NAT correlation
+		copy(payload[OffsetDestinationIPNoEncap-4:OffsetDestinationIPNoEncap], pktMd.DataPlaneReport.PreNATSourceIP)
 		copy(payload[OffsetDestinationIPNoEncap:OffsetDestinationIPNoEncap+4], pktMd.DataPlaneReport.PreNATDestinationIP)
 		b := make([]byte, 2)
 		binary.BigEndian.PutUint16(b, pktMd.DataPlaneReport.PreNATDestinationPort)
 		copy(payload[OffsetDestinationPortNoEncap:OffsetDestinationPortNoEncap+2], b)
+		binary.BigEndian.PutUint16(b, pktMd.DataPlaneReport.PreNATSourcePort)
+		copy(payload[OffsetDestinationPortNoEncap-2:OffsetDestinationPortNoEncap], b)
 	}
 
 	return payload
 }
 
-func buildINTFlowReport(pktMd dataplane.PacketMetadata, switchID uint32, hwID uint8, seqNo uint32) ([]byte, error) {
+func stringify5TupleFromPayload(payload gopacket.Payload) string {
+	var srcAddr, dstAddr net.IP
+	var srcPort, dstPort uint16
+	var protocol uint8
+
+	pkt := gopacket.NewPacket(payload, layers.LayerTypeEthernet, gopacket.Default)
+
+	if ipv4Layer := pkt.Layer(layers.LayerTypeIPv4); ipv4Layer != nil {
+		ipv4 := ipv4Layer.(*layers.IPv4)
+		srcAddr = ipv4.SrcIP
+		dstAddr = ipv4.DstIP
+		protocol = uint8(ipv4.Protocol)
+
+		if l4Layer := pkt.Layer(ipv4.NextLayerType()); l4Layer != nil {
+			switch ipv4.Protocol {
+			case layers.IPProtocolTCP:
+				tcp, _ := l4Layer.(*layers.TCP)
+				srcPort = uint16(tcp.SrcPort)
+				dstPort = uint16(tcp.DstPort)
+			case layers.IPProtocolUDP:
+				udp, _ := l4Layer.(*layers.UDP)
+				srcPort = uint16(udp.SrcPort)
+				dstPort = uint16(udp.DstPort)
+			}
+		}
+	} else {
+		return "failed to build 5-tuple from payload, no IPv4 layer?"
+	}
+
+	return fmt.Sprintf("SrcIP=%v, DstIP=%v, Protocol=%v, SrcPort=%v, DstPort=%v",
+		srcAddr.String(), dstAddr.String(), protocol, srcPort, dstPort)
+}
+
+func buildINTFlowReport(pktMd *dataplane.PacketMetadata, switchID uint32, hwID uint8, seqNo uint32) ([]byte, error) {
 	fixedReport := getINTFixedHeader(pktMd, hwID, seqNo)
 	fixedReport.NProto = NProtoTelemetrySwitchLocal
 	fixedReport.TrackedFlowAssociation = true
@@ -326,7 +366,7 @@ func buildINTFlowReport(pktMd dataplane.PacketMetadata, switchID uint32, hwID ui
 	log.WithFields(log.Fields{
 		"fixed-report": fixedReport,
 		"flow-report":  localReport,
-		"payload":      payload,
+		"5-tuple":      stringify5TupleFromPayload(payload),
 	}).Debug("INT Flow Report built")
 
 	buf := gopacket.NewSerializeBuffer()
@@ -342,7 +382,7 @@ func buildINTFlowReport(pktMd dataplane.PacketMetadata, switchID uint32, hwID ui
 	return buf.Bytes(), nil
 }
 
-func buildINTDropReport(pktMd dataplane.PacketMetadata, switchID uint32, hwID uint8, seqNo uint32) ([]byte, error) {
+func buildINTDropReport(pktMd *dataplane.PacketMetadata, switchID uint32, hwID uint8, seqNo uint32) ([]byte, error) {
 	fixedReport := getINTFixedHeader(pktMd, hwID, seqNo)
 	fixedReport.Dropped = true
 	fixedReport.NProto = NProtoTelemetryDrop
@@ -357,7 +397,7 @@ func buildINTDropReport(pktMd dataplane.PacketMetadata, switchID uint32, hwID ui
 	log.WithFields(log.Fields{
 		"fixed-report": fixedReport,
 		"drop-report":  dropReport,
-		"payload":      payload,
+		"5-tuple":      stringify5TupleFromPayload(payload),
 	}).Debug("INT Drop Report built")
 
 	buf := gopacket.NewSerializeBuffer()
@@ -373,7 +413,7 @@ func buildINTDropReport(pktMd dataplane.PacketMetadata, switchID uint32, hwID ui
 	return buf.Bytes(), nil
 }
 
-func BuildINTReport(pktMd dataplane.PacketMetadata, switchID uint32, hwID uint8, seqNo uint32) (data []byte, err error) {
+func BuildINTReport(pktMd *dataplane.PacketMetadata, switchID uint32, hwID uint8, seqNo uint32) (data []byte, err error) {
 	switch pktMd.DataPlaneReport.Type {
 	case dataplane.TraceReport:
 		data, err = buildINTFlowReport(pktMd, switchID, hwID, seqNo)

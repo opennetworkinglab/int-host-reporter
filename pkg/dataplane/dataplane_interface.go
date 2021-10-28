@@ -21,7 +21,7 @@ import (
 )
 
 type DataPlaneInterface struct {
-	eventsChannel chan PacketMetadata
+	eventsChannel chan *PacketMetadata
 
 	watchlistMapProtoSrcAddr *ebpf.Map
 	watchlistMapDstAddr      *ebpf.Map
@@ -91,7 +91,7 @@ func NewDataPlaneInterface() *DataPlaneInterface {
 	return &DataPlaneInterface{}
 }
 
-func (d *DataPlaneInterface) SetEventChannel(ch chan PacketMetadata) {
+func (d *DataPlaneInterface) SetEventChannel(ch chan *PacketMetadata) {
 	d.eventsChannel = ch
 }
 
@@ -182,7 +182,7 @@ func (d *DataPlaneInterface) doDetectPacketDrops() {
 				SrcPort:   0,
 			}
 
-			d.eventsChannel <- pktMd
+			d.eventsChannel <- &pktMd
 
 			// this is the second time we see this entry,
 			// so it's very likely that this packet haven't reached any egress program.
@@ -307,7 +307,7 @@ func (d *DataPlaneInterface) processPerfRecord(record perf.Record) {
 	}
 	pktMd := event.Parse()
 	select {
-	case d.eventsChannel <- *pktMd:
+	case d.eventsChannel <- pktMd:
 	default:
 		log.Warn("Dropped event because events channel is full or closed")
 	}
