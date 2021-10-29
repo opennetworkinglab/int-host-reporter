@@ -136,6 +136,8 @@ type PacketMetadata struct {
 	DstPort			uint16
 	SrcPort			uint16
 
+	MatchedPostNAT   bool
+
 	// raw data of the data plane packet. DataPlaneReport is excluded.
 	RawData []byte
 
@@ -146,6 +148,7 @@ type PacketMetadata struct {
 func (dpe Event) Parse() *PacketMetadata {
 	pktMd := &PacketMetadata{
 		EncapMode: "none",
+		MatchedPostNAT: false,
 	}
 	pktMd.RawData = dpe.Data[DataPlaneReportSize:]
 	parsedPacket := gopacket.NewPacket(dpe.Data, LayerTypeDataPlaneReport, gopacket.Default)

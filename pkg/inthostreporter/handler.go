@@ -37,14 +37,14 @@ type ReportHandler struct {
 	udpConn *net.UDPConn
 
 	watchlist          []watchlist.INTWatchlistRule
-	reportsChannel     chan dataplane.PacketMetadata
+	reportsChannel     chan *dataplane.PacketMetadata
 	dataPlaneInterface *dataplane.DataPlaneInterface
 }
 
 func NewReportHandler(dpi *dataplane.DataPlaneInterface) *ReportHandler {
 	rh := &ReportHandler{}
 	rh.dataPlaneInterface = dpi
-	rh.reportsChannel = make(chan dataplane.PacketMetadata, rxChannelSize)
+	rh.reportsChannel = make(chan *dataplane.PacketMetadata, rxChannelSize)
 	return rh
 }
 
@@ -106,7 +106,7 @@ func (rh *ReportHandler) Stop() {
 	close(rh.reportsChannel)
 }
 
-func (rh *ReportHandler) applyWatchlist(pktMd dataplane.PacketMetadata) bool {
+func (rh *ReportHandler) applyWatchlist(pktMd *dataplane.PacketMetadata) bool {
 	packetLog := log.Fields{
 		"protocol" : pktMd.Protocol,
 		"src-addr" : pktMd.SrcAddr.String(),
@@ -126,6 +126,7 @@ func (rh *ReportHandler) applyWatchlist(pktMd dataplane.PacketMetadata) bool {
 					"packet": packetLog,
 					"rule-matched": rule.String(),
 				}).Debug("Match for post-NAT tuple found")
+				pktMd.MatchedPostNAT = true
 				return true
 			}
 	}
