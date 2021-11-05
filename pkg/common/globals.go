@@ -3,4 +3,10 @@
 
 package common
 
+import "flag"
+
 var CNITypeInUse CNIType = 0
+
+var (
+	DataInterface = flag.String("data-interface", "", "")
+)

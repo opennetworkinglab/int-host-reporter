@@ -9,9 +9,11 @@ import (
 	"github.com/opennetworkinglab/int-host-reporter/pkg/common"
 	"github.com/opennetworkinglab/int-host-reporter/pkg/dataplane"
 	"github.com/opennetworkinglab/int-host-reporter/pkg/loader"
+	"github.com/opennetworkinglab/int-host-reporter/pkg/service"
 	"github.com/opennetworkinglab/int-host-reporter/pkg/watchlist"
 	log "github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -27,6 +29,7 @@ type IntHostReporter struct {
 	ctx        context.Context
 	cancelFunc context.CancelFunc
 
+	restService        *http.Server
 	reportHandler      *ReportHandler
 	dataPlaneInterface *dataplane.DataPlaneInterface
 
@@ -172,7 +175,7 @@ func (itr *IntHostReporter) attachINTProgramsAtStartup() error {
 	noProgramsAttached := true
 	links, _ := netlink.LinkList()
 	for _, link := range links {
-		if link.Attrs().Name == *DataInterface || common.IsInterfaceManagedByCNI(link.Attrs().Name) {
+		if link.Attrs().Name == *common.DataInterface || common.IsInterfaceManagedByCNI(link.Attrs().Name) {
 			log.Debugf("Trying to load BPF program to %s", link.Attrs().Name)
 			err = itr.loadBPFProgram(link.Attrs().Name)
 			if err != nil {
@@ -194,7 +197,7 @@ func (itr *IntHostReporter) attachINTProgramsAtStartup() error {
 func (itr *IntHostReporter) clearINTPrograms() (err error) {
 	links, _ := netlink.LinkList()
 	for _, link := range links {
-		if link.Attrs().Name == *DataInterface || common.IsInterfaceManagedByCNI(link.Attrs().Name) {
+		if link.Attrs().Name == *common.DataInterface || common.IsInterfaceManagedByCNI(link.Attrs().Name) {
 			log.Debugf("Clearing BPF program from %s", link.Attrs().Name)
 			err = itr.removeBPFProgram(link.Attrs().Name)
 		}
@@ -232,7 +235,7 @@ func (itr *IntHostReporter) reloadINTProgramsIfNeeded(stopCtx context.Context) {
 		default: {
 			links, _ := netlink.LinkList()
 			for _, link := range links {
-				if link.Attrs().Name == *DataInterface ||
+				if link.Attrs().Name == *common.DataInterface ||
 					common.IsInterfaceManagedByCNI(link.Attrs().Name) {
 					if !interfaceHasINTProgram(link, netlink.HANDLE_MIN_INGRESS) ||
 						!interfaceHasINTProgram(link, netlink.HANDLE_MIN_EGRESS) {
@@ -256,6 +259,10 @@ func (itr *IntHostReporter) Start() error {
 
 	ctx, cancel := context.WithCancel(itr.ctx)
 	itr.cancelFunc = cancel
+
+	itr.restService = service.New(":4048")
+	log.Info("Starting REST service listening on :4048")
+	go itr.restService.ListenAndServe()
 
 	err := itr.attachINTProgramsAtStartup()
 	if err != nil {
@@ -288,6 +295,7 @@ func (itr *IntHostReporter) Start() error {
 
 func (itr *IntHostReporter) Stop() (err error) {
 	itr.cancelFunc()
+	itr.restService.Close()
 	itr.reportHandler.Stop()
 	err = itr.clearINTPrograms()
 	itr.dataPlaneInterface.Stop()

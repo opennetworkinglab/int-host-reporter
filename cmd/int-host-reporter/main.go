@@ -5,6 +5,7 @@ package main
 
 import (
 	"flag"
+	"github.com/gin-gonic/gin"
 	"github.com/opennetworkinglab/int-host-reporter/pkg/common"
 	"github.com/opennetworkinglab/int-host-reporter/pkg/inthostreporter"
 	"github.com/opennetworkinglab/int-host-reporter/pkg/watchlist"
@@ -38,11 +39,18 @@ func parseLogLevel() log.Level {
 
 func main() {
 	flag.Parse()
-	log.SetLevel(parseLogLevel())
+	logLevel := parseLogLevel()
+	log.SetLevel(logLevel)
 	log.WithFields(log.Fields{
 		"collector": *inthostreporter.INTCollectorServer,
 		"switchID": *inthostreporter.INTSwitchID,
 	}).Info("Starting INT Host Reporter.")
+
+	if logLevel != log.TraceLevel {
+		// default Gin mode is debug.
+		// Keep it in debug mode only if trace is enabled.
+		gin.SetMode(gin.ReleaseMode)
+	}
 
 	err := common.ParseCNIType(*cniInUse)
 	if err != nil {
