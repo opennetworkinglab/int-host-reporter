@@ -4,6 +4,7 @@ go 1.16
 
 require (
 	github.com/cilium/ebpf v0.5.0
+	github.com/gin-gonic/gin v1.7.4
 	github.com/google/gopacket v1.1.19
 	github.com/sirupsen/logrus v1.8.1
 	github.com/vishvananda/netlink v1.1.0

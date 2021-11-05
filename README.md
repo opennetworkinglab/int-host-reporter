@@ -56,6 +56,7 @@ $ docker pull opennetworking/int-host-reporter:latest
 - Kernel version v5.11 or higher. 
 - `CAP_SYS_ADMIN` privileges with access to the host network (`hostNetwork: true`).
 - Access to the eBPF filesystem (`/sys/fs/bpf`).
+- INT Host Reporter exposes REST API on `tcp/4048` port. Make sure this port is accessible.
 
 ### Install the K8s cluster
 
@@ -139,6 +140,9 @@ represents the abstraction of connections between switch and subnet.
 
 However, building the DI topology file manually is time-consuming and error-prone. Therefore, we have created the `./di gen-topology` script
 to automate this process. You can find the guide how to use this script in [the sdfabric-utils repository](https://github.com/opennetworkinglab/sdfabric-utils).
+
+The `./di gen-topology` scipt leverages INT Host Reporter's `GET /api/v1/topology` API exposed on each
+K8s nodes to retrieve information about local links. 
 
 ## Current limitations 
 
