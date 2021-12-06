@@ -14,6 +14,5 @@ linters:
     - deadcode
     - staticcheck
     - gosec
-    - goimports
     - vet
     - revive

@@ -14,8 +14,8 @@ import (
 
 var (
 	watchlistConfiguration = flag.String("watchlist-conf", "", "File with INT watchlist configuration")
-	cniInUse = flag.String("cni", "", "Kubernetes CNI used by the cluster (supported CNIs: cilium, calico-ebpf, calico-legacy")
-	logLevel = flag.String("log-level", "info", "Set log level (info/debug/trace).")
+	cniInUse               = flag.String("cni", "", "Kubernetes CNI used by the cluster (supported CNIs: cilium, calico-ebpf, calico-legacy")
+	logLevel               = flag.String("log-level", "info", "Set log level (info/debug/trace).")
 )
 
 func init() {
@@ -43,7 +43,7 @@ func main() {
 	log.SetLevel(logLevel)
 	log.WithFields(log.Fields{
 		"collector": *inthostreporter.INTCollectorServer,
-		"switchID": *inthostreporter.INTSwitchID,
+		"switchID":  *inthostreporter.INTSwitchID,
 	}).Info("Starting INT Host Reporter.")
 
 	if logLevel != log.TraceLevel {

@@ -10,7 +10,7 @@ import (
 	"net"
 )
 
-type WatchlistRuleYAML struct {
+type INTWatchlistRuleYAML struct {
 	DstAddr  string `yaml:"dst-addr,omitempty"`
 	Protocol string `yaml:"protocol"`
 	SrcAddr  string `yaml:"src-addr,omitempty"`
@@ -18,8 +18,8 @@ type WatchlistRuleYAML struct {
 	SrcPort  string `yaml:"src-port"`
 }
 
-type WatchlistYAML struct {
-	Rules []WatchlistRuleYAML `yaml:"rules"`
+type INTWatchlistYAML struct {
+	Rules []INTWatchlistRuleYAML `yaml:"rules"`
 }
 
 type INTWatchlistRule struct {
@@ -68,7 +68,7 @@ func FillFromFile(w *INTWatchlist, filename string) error {
 		return err
 	}
 
-	watchlist := &WatchlistYAML{}
+	watchlist := &INTWatchlistYAML{}
 	err = yaml.Unmarshal(buf, watchlist)
 	if err != nil {
 		return fmt.Errorf("in file %q: %v", filename, err)
@@ -99,7 +99,7 @@ func protocolTextToDecimal(proto string) (uint8, error) {
 	}
 }
 
-func parseINTWatchlistRule(rule WatchlistRuleYAML) (INTWatchlistRule, error) {
+func parseINTWatchlistRule(rule INTWatchlistRuleYAML) (INTWatchlistRule, error) {
 	r := NewINTWatchlistRule()
 	proto, err := protocolTextToDecimal(rule.Protocol)
 	if err != nil {

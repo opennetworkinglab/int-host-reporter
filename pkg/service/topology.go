@@ -13,10 +13,10 @@ import (
 
 // Represents local link inside a host.
 type localLink struct {
-	ID uint64 `json:"id"`
-	Name string `json:"name"`
-	IPs []net.IP `json:"ip-addresses"`
-	NodeIface bool `json:"is-node-iface"`
+	ID        uint64   `json:"id"`
+	Name      string   `json:"name"`
+	IPs       []net.IP `json:"ip-addresses"`
+	NodeIface bool     `json:"is-node-iface"`
 }
 
 type topology struct {
@@ -28,9 +28,9 @@ func GetTopology(c *gin.Context) {
 	systemLinks := system.GetAllLinks()
 	for _, sysLink := range systemLinks {
 		l := localLink{
-			ID:   sysLink.ID,
-			Name: sysLink.Name,
-			IPs: sysLink.IPAddresses,
+			ID:        sysLink.ID,
+			Name:      sysLink.Name,
+			IPs:       sysLink.IPAddresses,
 			NodeIface: false,
 		}
 		if sysLink.Name == *common.DataInterface {

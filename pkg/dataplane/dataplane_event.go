@@ -12,11 +12,11 @@ import (
 	"net"
 )
 
-type DataPlaneReportType uint8
+type DatapathReportType uint8
 
 // DataPlaneReportSize
 // IMPORTANT!
-// Keep in sync with DataPlaneReport.
+// Keep in sync with DatapathReport.
 const (
 	DataPlaneReportSize = 40
 )
@@ -24,13 +24,13 @@ const (
 // IMPORTANT!
 // Keep in sync with data plane.
 const (
-	TraceReport DataPlaneReportType = 1
-	DropReport  DataPlaneReportType = 2
+	TraceReport DatapathReportType = 1
+	DropReport  DatapathReportType = 2
 )
 
 var (
 	LayerTypeDataPlaneReport = gopacket.RegisterLayerType(1000, gopacket.LayerTypeMetadata{
-		Name:    "DataPlaneReport",
+		Name:    "DatapathReport",
 		Decoder: gopacket.DecodeFunc(decodeDataPlaneReport),
 	})
 )
@@ -40,12 +40,12 @@ type Event struct {
 	CPU  int
 }
 
-// DataPlaneReport
+// DatapathReport
 // IMPORTANT!
 // This struct must be kept in sync with 'struct dp_event` from bpf-gpl/fib.h (calico-felix).
-type DataPlaneReport struct {
+type DatapathReport struct {
 	layers.BaseLayer
-	Type                  DataPlaneReportType
+	Type                  DatapathReportType
 	Reason                uint8
 	PreNATSourceIP        net.IP
 	PreNATDestinationIP   net.IP
@@ -57,8 +57,8 @@ type DataPlaneReport struct {
 	EgressTimestamp       uint64
 }
 
-func (dpr *DataPlaneReport) String() string {
-	return fmt.Sprintf("DataPlaneReport(type=%d, reason=%d, "+
+func (dpr *DatapathReport) String() string {
+	return fmt.Sprintf("DatapathReport(type=%d, reason=%d, "+
 		"PreNATSourceIP=%s, "+
 		"PreNATDestinationIP=%s, "+
 		"PreNATSourcePort=%d, "+
@@ -73,25 +73,25 @@ func (dpr *DataPlaneReport) String() string {
 		dpr.IngressTimestamp, dpr.EgressTimestamp)
 }
 
-func (dpr *DataPlaneReport) LayerType() gopacket.LayerType {
+func (dpr *DatapathReport) LayerType() gopacket.LayerType {
 	return LayerTypeDataPlaneReport
 }
 
 // CanDecode returns the set of layer types that this DecodingLayer can decode.
-func (dpr *DataPlaneReport) CanDecode() gopacket.LayerClass {
+func (dpr *DatapathReport) CanDecode() gopacket.LayerClass {
 	return LayerTypeDataPlaneReport
 }
 
-func (dpr *DataPlaneReport) NextLayerType() gopacket.LayerType {
+func (dpr *DatapathReport) NextLayerType() gopacket.LayerType {
 	return layers.LayerTypeEthernet
 }
 
-func (dpr *DataPlaneReport) DecodeFromBytes(data []byte, p gopacket.PacketBuilder) error {
+func (dpr *DatapathReport) DecodeFromBytes(data []byte, p gopacket.PacketBuilder) error {
 	if len(data) < DataPlaneReportSize {
 		return fmt.Errorf("invalid data plane report. Length %d less than %d",
 			len(data), DataPlaneReportSize)
 	}
-	dpr.Type = DataPlaneReportType(data[0])
+	dpr.Type = DatapathReportType(data[0])
 	dpr.Reason = uint8(data[1])
 	// 2 bytes of padding
 	srcIPv4 := binary.LittleEndian.Uint32(data[4:8])
@@ -114,7 +114,7 @@ func (dpr *DataPlaneReport) DecodeFromBytes(data []byte, p gopacket.PacketBuilde
 }
 
 func decodeDataPlaneReport(data []byte, p gopacket.PacketBuilder) error {
-	dpr := &DataPlaneReport{}
+	dpr := &DatapathReport{}
 	err := dpr.DecodeFromBytes(data, p)
 	if err != nil {
 		return err
@@ -128,33 +128,33 @@ func decodeDataPlaneReport(data []byte, p gopacket.PacketBuilder) error {
 }
 
 type PacketMetadata struct {
-	DataPlaneReport *DataPlaneReport
-	EncapMode		string
-	DstAddr 		net.IP
-	SrcAddr			net.IP
-	Protocol 		uint8
-	DstPort			uint16
-	SrcPort			uint16
+	DataPlaneReport *DatapathReport
+	EncapMode       string
+	DstAddr         net.IP
+	SrcAddr         net.IP
+	Protocol        uint8
+	DstPort         uint16
+	SrcPort         uint16
 
-	MatchedPostNAT   bool
+	MatchedPostNAT bool
 
 	// raw data of the data plane packet. DataPlaneReport is excluded.
 	RawData []byte
 
 	// IP layer
-	IPLayer			*layers.IPv4
+	IPLayer *layers.IPv4
 }
 
 func (dpe Event) Parse() *PacketMetadata {
 	pktMd := &PacketMetadata{
-		EncapMode: "none",
+		EncapMode:      "none",
 		MatchedPostNAT: false,
 	}
 	pktMd.RawData = dpe.Data[DataPlaneReportSize:]
 	parsedPacket := gopacket.NewPacket(dpe.Data, LayerTypeDataPlaneReport, gopacket.Default)
 	log.Trace(parsedPacket.Dump())
 	if dataPlaneReportLayer := parsedPacket.Layer(LayerTypeDataPlaneReport); dataPlaneReportLayer != nil {
-		pktMd.DataPlaneReport = dataPlaneReportLayer.(*DataPlaneReport)
+		pktMd.DataPlaneReport = dataPlaneReportLayer.(*DatapathReport)
 		if vxlanLayer := parsedPacket.Layer(layers.LayerTypeVXLAN); vxlanLayer != nil {
 			// TODO: we support only VXLAN in the PoC
 			pktMd.EncapMode = "vxlan"
@@ -183,9 +183,9 @@ func (dpe Event) Parse() *PacketMetadata {
 	}
 
 	// FIXME: commented out at least for now; as it's not decided yet whether to report pre- or post-NAT'ed tuple to INT collector
-	//if pktMd.DataPlaneReport.PreNATDestinationPort != 0 && !pktMd.DataPlaneReport.PreNATDestinationIP.IsUnspecified() {
-	//	pktMd.DstPort = pktMd.DataPlaneReport.PreNATDestinationPort
-	//	copy(pktMd.DstAddr, pktMd.DataPlaneReport.PreNATDestinationIP)
+	//if pktMd.DatapathReport.PreNATDestinationPort != 0 && !pktMd.DatapathReport.PreNATDestinationIP.IsUnspecified() {
+	//	pktMd.DstPort = pktMd.DatapathReport.PreNATDestinationPort
+	//	copy(pktMd.DstAddr, pktMd.DatapathReport.PreNATDestinationIP)
 	//}
 
 	return pktMd

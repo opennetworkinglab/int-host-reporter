@@ -5,7 +5,7 @@ package common
 
 import "flag"
 
-var CNITypeInUse CNIType = 0
+var CNITypeInUse CNIType
 
 var (
 	DataInterface = flag.String("data-interface", "", "")

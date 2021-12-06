@@ -29,21 +29,21 @@ const (
 
 const (
 	// Common drop reasons
-	DropReasonUnknown = 0
-	DropReasonIPVersionInvalid = 25
-	DropReasonIPTTLZero = 26
-	DropReasonIPIHLInvalid = 30
-	DropReasonIPInvalidChecksum = 31
-	DropReasonRoutingMiss = 29
+	DropReasonUnknown             = 0
+	DropReasonIPVersionInvalid    = 25
+	DropReasonIPTTLZero           = 26
+	DropReasonIPIHLInvalid        = 30
+	DropReasonIPInvalidChecksum   = 31
+	DropReasonRoutingMiss         = 29
 	DropReasonPortVLANMappingMiss = 55
-	DropReasonTrafficManager = 71
-	DropReasonACLDeny = 80
-	DropReasonBridginMiss = 89
+	DropReasonTrafficManager      = 71
+	DropReasonACLDeny             = 80
+	DropReasonBridginMiss         = 89
 
 	// Calico-specific drop reasons
-	DropReasonEncapFail = 180
-	DropReasonDecapFail = 181
+	DropReasonEncapFail    = 180
+	DropReasonDecapFail    = 181
 	DropReasonChecksumFail = 182
-	DropReasonIPOptions = 183
+	DropReasonIPOptions    = 183
 	DropReasonUnauthSource = 184
 )

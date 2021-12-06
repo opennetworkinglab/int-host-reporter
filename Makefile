@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: 2021 Open Networking Foundation <info@opennetworking.org>
 #
-# SPDX-License-Identifier: LicenseRef-ONF-Member-1.0
+# SPDX-License-Identifier: Apache-2.0
+
+GO_FILES           := $(shell find . -type d -name '.cache' -prune -o -type f -name '*.go' -print)
 
 fmt:
 	@echo
