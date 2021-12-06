@@ -1,0 +1,44 @@
+# SPDX-FileCopyrightText: 2021 Open Networking Foundation <info@opennetworking.org>
+#
+# SPDX-License-Identifier: Apache-2.0
+
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+Vagrant.configure("2") do |config|
+
+  config.vm.define "test_kubemaster" do |kubemaster|
+    kubemaster.vm.hostname = "kubemaster"
+    kubemaster.vm.box = "abi/ubuntu2004"
+    kubemaster.vm.network "private_network", ip: "192.168.101.20"
+    kubemaster.vm.provision "shell", path: "provision.sh"
+    kubemaster.vm.provider "libvirt" do |vb|
+      vb.memory = "2048"
+      vb.cpus = 2
+    end
+  end
+
+  config.vm.define "test_worker" do |worker|
+    worker.vm.hostname = "worker"
+    worker.vm.box = "abi/ubuntu2004"
+    worker.vm.network "private_network", ip: "192.168.101.21"
+    worker.vm.provision "shell", path: "provision.sh"
+    worker.vm.provider "libvirt" do |vb|
+      vb.memory = "2048"
+      vb.cpus = 2
+    end
+  end 
+
+  config.vm.define "tester" do |tester|
+    tester.vm.hostname = "tester"
+    tester.vm.box = "abi/ubuntu2004"
+    tester.vm.network "private_network", ip: "192.168.101.22"
+    tester.vm.provision "shell", path: "provision.sh"
+    tester.vm.provision "shell", path: "provision-tester.sh"
+    tester.vm.provider "libvirt" do |vb|
+      vb.memory = "2048"
+      vb.cpus = 2
+    end
+  end
+
+end

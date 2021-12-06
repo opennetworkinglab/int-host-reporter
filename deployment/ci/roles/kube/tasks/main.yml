@@ -1,0 +1,30 @@
+# Copyright 2021-present Open Networking Foundation
+# SPDX-License-Identifier: Apache-2.0
+---
+- name: Install prerequisites
+  apt:
+    name: apt-transport-https
+    update_cache: yes
+
+- name: Add apt signing key
+  apt_key:
+    url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
+
+- name: Add to kubernetes.list
+  lineinfile:
+    path: /etc/apt/sources.list.d/kubernetes.list
+    line: 'deb http://apt.kubernetes.io/ kubernetes-xenial main'
+    create: yes
+
+- name: Install kubelet and kubeadm
+  apt:
+    name: ['kubelet=1.20.2-00', 'kubeadm=1.20.2-00']
+    update_cache: yes
+
+- name: Hold kubelet and kubeadm
+  dpkg_selections:
+    name: '{{ item }}'
+    selection: hold
+  with_items: 
+    - kubelet 
+    - kubeadm

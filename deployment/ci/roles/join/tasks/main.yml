@@ -1,0 +1,20 @@
+# Copyright 2021-present Open Networking Foundation
+# SPDX-License-Identifier: Apache-2.0
+---
+- name:  Reset all kubeadm installed state
+  command: kubeadm reset --force
+  ignore_errors: true
+
+- name: Join cluster
+  command: '{{ hostvars[groups["master"][0]]["kubeadm_join_cmd"] }}'
+
+- name: Update kubelet configuration
+  template:
+    src: templates/kubelet.j2
+    dest: /etc/systemd/system/kubelet.service.d/10-kubeadm.conf
+
+- name: Reload kubelet configuration
+  systemd:
+    state: restarted
+    daemon_reload: yes
+    name: kubelet

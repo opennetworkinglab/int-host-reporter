@@ -1,0 +1,14 @@
+# Copyright 2021-present Open Networking Foundation
+# SPDX-License-Identifier: Apache-2.0
+
+ansible==2.10.5
+ansible-base==2.10.5
+cffi==1.14.4
+cryptography==3.3.2
+Jinja2==2.11.3
+MarkupSafe==1.1.1
+packaging==20.8
+pycparser==2.20
+pyparsing==2.4.7
+PyYAML==5.4.1
+six==1.15.0

@@ -1,0 +1,31 @@
+# Copyright 2021-present Open Networking Foundation
+# SPDX-License-Identifier: Apache-2.0
+---
+- name: Reset all kubeadm installed state
+  command: kubeadm reset --force
+  ignore_errors: true
+
+- name: Initialise Master node
+  command: kubeadm init --apiserver-advertise-address=192.168.101.20 --pod-network-cidr=192.168.0.0/16
+  register: kubeadm_output
+
+- name: Set fact for kubeadm join command which will be used later
+  set_fact:
+    kubeadm_join_cmd: '{{ kubeadm_output.stdout_lines[-2][:-2] }}{{ kubeadm_output.stdout_lines[-1] }}'
+
+- name: Create .kube directory
+  become: no
+  file:
+    path: /home/vagrant/.kube
+    state: directory
+    owner: vagrant
+    group: vagrant
+  register: kube_dir
+
+- name: Copy kube config
+  copy:
+    src: /etc/kubernetes/admin.conf
+    dest: '{{ kube_dir.path }}/config'
+    remote_src: yes
+    owner: vagrant
+    group: vagrant

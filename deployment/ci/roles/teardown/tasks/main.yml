@@ -1,0 +1,20 @@
+# Copyright 2021-present Open Networking Foundation
+# SPDX-License-Identifier: Apache-2.0
+---
+- name: Drain nodes
+  command: kubectl drain {{ item }} --delete-local-data --force --ignore-daemonsets
+  loop:
+    - worker
+    - kubemaster
+  ignore_errors: true
+
+- name: Delete nodes
+  command: kubectl delete node {{ item }}
+  loop:
+    - worker
+    - kubemaster
+  ignore_errors: true
+
+- name: Reset kubeadm installed state
+  command: kubeadm reset --force
+  become: yes
