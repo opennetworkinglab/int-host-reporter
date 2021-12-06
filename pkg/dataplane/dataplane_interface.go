@@ -20,13 +20,13 @@ import (
 	"time"
 )
 
-type DataPlaneInterface struct {
+type EBPFDatapathInterface struct {
 	eventsChannel chan *PacketMetadata
 
 	watchlistMapProtoSrcAddr *ebpf.Map
 	watchlistMapDstAddr      *ebpf.Map
 
-	sharedMap        *ebpf.Map
+	sharedMap *ebpf.Map
 
 	ingressSeqNumMap *ebpf.Map
 	egressSeqNumMap  *ebpf.Map
@@ -71,7 +71,7 @@ func (key SharedMapKey) String() string {
 }
 
 func (value SharedMapValue) String() string {
-	return fmt.Sprintf("SharedMapValue={ig_timestamp=%v, ig_port=%v, pre-nat-ip-dst=%v," +
+	return fmt.Sprintf("SharedMapValue={ig_timestamp=%v, ig_port=%v, pre-nat-ip-dst=%v,"+
 		"pre-nat-ip-src=%v, pre-nat-source-port=%v, pre-nat-dest-port=%v, seen-by-userspace=%v}",
 		value.IngressTimestamp, value.IngressPort,
 		common.ToNetIP(value.PreNATIPDest).String(),
@@ -87,15 +87,15 @@ func init() {
 	os.Remove(common.DefaultMapRoot + "/" + common.DefaultMapPrefix + "/" + common.INTEventsMap)
 }
 
-func NewDataPlaneInterface() *DataPlaneInterface {
-	return &DataPlaneInterface{}
+func NewDataPlaneInterface() *EBPFDatapathInterface {
+	return &EBPFDatapathInterface{}
 }
 
-func (d *DataPlaneInterface) SetEventChannel(ch chan *PacketMetadata) {
+func (d *EBPFDatapathInterface) SetEventChannel(ch chan *PacketMetadata) {
 	d.eventsChannel = ch
 }
 
-func (d *DataPlaneInterface) Init() error {
+func (d *EBPFDatapathInterface) Init() error {
 	layers.RegisterUDPPortLayerType(8472, layers.LayerTypeVXLAN)
 
 	commonPath := common.DefaultMapRoot + "/" + common.DefaultMapPrefix
@@ -123,7 +123,7 @@ func (d *DataPlaneInterface) Init() error {
 	return nil
 }
 
-func (d *DataPlaneInterface) Start(stopCtx context.Context) error {
+func (d *EBPFDatapathInterface) Start(stopCtx context.Context) error {
 	defer func() {
 		d.dataPlaneReader.Close()
 	}()
@@ -133,23 +133,24 @@ func (d *DataPlaneInterface) Start(stopCtx context.Context) error {
 		case <-stopCtx.Done():
 			log.Info("Data plane interface has stopped listening to events..")
 			return nil
-		default: {
-			record, err := d.dataPlaneReader.Read()
-			if err != nil {
-				log.Warnf("Error received while reading from perf buffer: %v", err)
-				continue
+		default:
+			{
+				record, err := d.dataPlaneReader.Read()
+				if err != nil {
+					log.Warnf("Error received while reading from perf buffer: %v", err)
+					continue
+				}
+				d.processPerfRecord(record)
 			}
-			d.processPerfRecord(record)
-		}
 		}
 	}
 }
 
-func (d *DataPlaneInterface) Stop() {
+func (d *EBPFDatapathInterface) Stop() {
 	d.dataPlaneReader.Close()
 }
 
-func (d *DataPlaneInterface) doDetectPacketDrops() {
+func (d *EBPFDatapathInterface) doDetectPacketDrops() {
 	var key SharedMapKey
 	var value SharedMapValue
 	iter := d.sharedMap.Iterate()
@@ -162,7 +163,7 @@ func (d *DataPlaneInterface) doDetectPacketDrops() {
 
 		if value.SeenByUserspace == 1 {
 			pktMd := PacketMetadata{
-				DataPlaneReport: &DataPlaneReport{
+				DataPlaneReport: &DatapathReport{
 					Type:                  DropReport,
 					Reason:                common.DropReasonUnknown,
 					PreNATSourceIP:        common.ToNetIP(value.PreNATIPSource),
@@ -192,7 +193,7 @@ func (d *DataPlaneInterface) doDetectPacketDrops() {
 				log.Debugf("failed to delete key %v from shared map: %v", key, err)
 			}
 			log.WithFields(log.Fields{
-				"key": key,
+				"key":   key,
 				"value": value,
 			}).Trace("Deleted entry from map")
 			continue
@@ -207,14 +208,14 @@ func (d *DataPlaneInterface) doDetectPacketDrops() {
 		}
 
 		log.WithFields(log.Fields{
-			"key": key,
+			"key":   key,
 			"value": value,
 		}).Trace("seen-by-userspace flag set for entry")
 	}
 	time.Sleep(time.Second)
 }
 
-func (d *DataPlaneInterface) DetectPacketDrops(stopCtx context.Context) {
+func (d *EBPFDatapathInterface) DetectPacketDrops(stopCtx context.Context) {
 	log.Debug("Starting packet drop detection process..")
 	for {
 		select {
@@ -229,7 +230,7 @@ func (d *DataPlaneInterface) DetectPacketDrops(stopCtx context.Context) {
 
 func calculateBitVectorForProtoSrcAddrMap(protocol uint32, srcAddr net.IPNet, allRules []watchlist.INTWatchlistRule) uint64 {
 	log.Debugf("Calculating BitVector for Protocol=%v, SrcAddr=%v", protocol, srcAddr)
-	var bitvector uint64 = 0
+	var bitvector uint64
 	for idx, rule := range allRules {
 		if protocol == uint32(rule.GetProtocol()) &&
 			(rule.GetSrcAddr().IP.Equal(srcAddr.IP) && bytes.Equal(rule.GetSrcAddr().Mask, srcAddr.Mask)) {
@@ -241,7 +242,7 @@ func calculateBitVectorForProtoSrcAddrMap(protocol uint32, srcAddr net.IPNet, al
 
 func calculateBitVectorForDstAddr(dstAddr net.IPNet, allRules []watchlist.INTWatchlistRule) uint64 {
 	log.Debugf("Calculating BitVector for DstAddr=%v", dstAddr)
-	var bitvector uint64 = 0
+	var bitvector uint64
 	for idx, rule := range allRules {
 		if rule.GetDstAddr().IP.Equal(dstAddr.IP) && bytes.Equal(rule.GetDstAddr().Mask, dstAddr.Mask) {
 			bitvector = bitvector | (1 << idx)
@@ -250,7 +251,7 @@ func calculateBitVectorForDstAddr(dstAddr net.IPNet, allRules []watchlist.INTWat
 	return bitvector
 }
 
-func (d *DataPlaneInterface) UpdateWatchlist(protocol uint8, srcAddr net.IPNet, dstAddr net.IPNet, allRules []watchlist.INTWatchlistRule) error {
+func (d *EBPFDatapathInterface) UpdateWatchlist(protocol uint8, srcAddr net.IPNet, dstAddr net.IPNet, allRules []watchlist.INTWatchlistRule) error {
 	keyProtoSrcAddr := struct {
 		prefixlen uint32
 		protocol  uint32
@@ -287,7 +288,7 @@ func (d *DataPlaneInterface) UpdateWatchlist(protocol uint8, srcAddr net.IPNet, 
 	return nil
 }
 
-func (d *DataPlaneInterface) processPerfRecord(record perf.Record) {
+func (d *EBPFDatapathInterface) processPerfRecord(record perf.Record) {
 	log.WithFields(log.Fields{
 		"CPU":            record.CPU,
 		"HasLostSamples": record.LostSamples > 0,

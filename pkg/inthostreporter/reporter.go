@@ -31,7 +31,7 @@ type IntHostReporter struct {
 
 	restService        *http.Server
 	reportHandler      *ReportHandler
-	dataPlaneInterface *dataplane.DataPlaneInterface
+	dataPlaneInterface *dataplane.EBPFDatapathInterface
 
 	signals chan os.Signal
 }
@@ -91,10 +91,9 @@ func addTcQdisc(ifName string) error {
 
 	if err = netlink.QdiscReplace(qdisc); err != nil {
 		return fmt.Errorf("replacing qdisc for %s failed: %s", ifName, err)
-	} else {
-		log.Debugf("replacing qdisc for %s succeeded", ifName)
 	}
 
+	log.Debugf("replacing qdisc for %s succeeded", ifName)
 	return nil
 }
 
@@ -212,7 +211,7 @@ func (itr *IntHostReporter) clearINTPrograms() (err error) {
 func interfaceHasINTProgram(link netlink.Link, handle uint32) bool {
 	filters, err := netlink.FilterList(link, handle)
 	if err != nil {
-		log.Error("failed to get filter list for link %v: %v", link.Attrs().Name, err.Error())
+		log.Errorf("failed to get filter list for link %v: %v", link.Attrs().Name, err.Error())
 		return false
 	}
 	for _, f := range filters {
@@ -232,30 +231,31 @@ func (itr *IntHostReporter) reloadINTProgramsIfNeeded(stopCtx context.Context) {
 		select {
 		case <-stopCtx.Done():
 			return
-		default: {
-			links, _ := netlink.LinkList()
-			for _, link := range links {
-				if link.Attrs().Name == *common.DataInterface ||
-					common.IsInterfaceManagedByCNI(link.Attrs().Name) {
-					if !interfaceHasINTProgram(link, netlink.HANDLE_MIN_INGRESS) ||
-						!interfaceHasINTProgram(link, netlink.HANDLE_MIN_EGRESS) {
-						log.Debugf("Re-loading INT eBPF program to interface %v", link.Attrs().Name)
-						err := itr.loadBPFProgram(link.Attrs().Name)
-						if err != nil {
-							log.Errorf("Failed to load BPF program to %s: %v", link.Attrs().Name, err)
+		default:
+			{
+				links, _ := netlink.LinkList()
+				for _, link := range links {
+					if link.Attrs().Name == *common.DataInterface ||
+						common.IsInterfaceManagedByCNI(link.Attrs().Name) {
+						if !interfaceHasINTProgram(link, netlink.HANDLE_MIN_INGRESS) ||
+							!interfaceHasINTProgram(link, netlink.HANDLE_MIN_EGRESS) {
+							log.Debugf("Re-loading INT eBPF program to interface %v", link.Attrs().Name)
+							err := itr.loadBPFProgram(link.Attrs().Name)
+							if err != nil {
+								log.Errorf("Failed to load BPF program to %s: %v", link.Attrs().Name, err)
+							}
 						}
 					}
 				}
+				time.Sleep(time.Second)
 			}
-			time.Sleep(time.Second)
-		}
 		}
 	}
 }
 
 func (itr *IntHostReporter) Start() error {
 	// Setup signal handler.
-	signal.Notify(itr.signals, syscall.SIGINT, syscall.SIGKILL, syscall.SIGTERM)
+	signal.Notify(itr.signals, syscall.SIGINT, syscall.SIGTERM)
 
 	ctx, cancel := context.WithCancel(itr.ctx)
 	itr.cancelFunc = cancel

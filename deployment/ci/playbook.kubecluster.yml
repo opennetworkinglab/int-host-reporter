@@ -1,0 +1,25 @@
+# Copyright 2021-present Open Networking Foundation
+# SPDX-License-Identifier: Apache-2.0
+---
+- hosts: all
+  become: yes
+  roles:
+    - docker
+    - kubectl
+
+- hosts: master
+  become: yes
+  roles:
+    - kube
+    - master
+
+- hosts: worker
+  become: yes
+  roles:
+    - kube
+    - join
+
+- hosts: tester
+  become: yes
+  roles:
+    - kubeconfig

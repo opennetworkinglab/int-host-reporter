@@ -37,9 +37,9 @@ func GetAllLinks() []SysLink {
 				IPAddresses: ipv4Addrs,
 			}
 			log.WithFields(log.Fields{
-				"name" : l.Name,
-				"ID" : l.ID,
-				"ip-addresses" : l.IPAddresses,
+				"name":         l.Name,
+				"ID":           l.ID,
+				"ip-addresses": l.IPAddresses,
 			}).Debug("Adding local link to the list.")
 			systemLinks = append(systemLinks, l)
 		}

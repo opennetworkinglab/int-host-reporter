@@ -1,0 +1,18 @@
+# Copyright 2021-present Open Networking Foundation
+# SPDX-License-Identifier: Apache-2.0
+
+# golangci-lint configuration used for CI
+run:
+  tests: true
+  timeout: 10m
+
+linters:
+  disable-all: true
+  enable:
+    - misspell
+    - gofmt
+    - deadcode
+    - staticcheck
+    - gosec
+    - vet
+    - revive

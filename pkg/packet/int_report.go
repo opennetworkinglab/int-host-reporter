@@ -241,26 +241,26 @@ func constructPayloadFromFiveTuple(srcAddr, dstAddr net.IP, protocol uint8, srcP
 	}
 
 	ipv4 := &layers.IPv4{
-		Version: 4,
-		TTL: 64,
-		Protocol:   layers.IPProtocol(protocol),
-		SrcIP:      srcAddr,
-		DstIP:      dstAddr,
+		Version:  4,
+		TTL:      64,
+		Protocol: layers.IPProtocol(protocol),
+		SrcIP:    srcAddr,
+		DstIP:    dstAddr,
 	}
 
 	var l4 gopacket.SerializableLayer
 	switch protocol {
 	case 6:
 		udp := &layers.UDP{
-			SrcPort:   layers.UDPPort(srcPort),
-			DstPort:   layers.UDPPort(dstPort),
+			SrcPort: layers.UDPPort(srcPort),
+			DstPort: layers.UDPPort(dstPort),
 		}
 		udp.SetNetworkLayerForChecksum(ipv4)
 		l4 = udp
 	case 17:
 		tcp := &layers.TCP{
-			SrcPort:    layers.TCPPort(srcPort),
-			DstPort:    layers.TCPPort(dstPort),
+			SrcPort: layers.TCPPort(srcPort),
+			DstPort: layers.TCPPort(dstPort),
 		}
 		tcp.SetNetworkLayerForChecksum(ipv4)
 		l4 = tcp

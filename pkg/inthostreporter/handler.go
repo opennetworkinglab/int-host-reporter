@@ -36,10 +36,10 @@ type ReportHandler struct {
 
 	watchlist          []watchlist.INTWatchlistRule
 	reportsChannel     chan *dataplane.PacketMetadata
-	dataPlaneInterface *dataplane.DataPlaneInterface
+	dataPlaneInterface *dataplane.EBPFDatapathInterface
 }
 
-func NewReportHandler(dpi *dataplane.DataPlaneInterface) *ReportHandler {
+func NewReportHandler(dpi *dataplane.EBPFDatapathInterface) *ReportHandler {
 	rh := &ReportHandler{}
 	rh.dataPlaneInterface = dpi
 	rh.reportsChannel = make(chan *dataplane.PacketMetadata, rxChannelSize)
@@ -106,11 +106,11 @@ func (rh *ReportHandler) Stop() {
 
 func (rh *ReportHandler) applyWatchlist(pktMd *dataplane.PacketMetadata) bool {
 	packetLog := log.Fields{
-		"protocol" : pktMd.Protocol,
-		"src-addr" : pktMd.SrcAddr.String(),
-		"dst-addr" : pktMd.DstAddr.String(),
-		"src-port" : pktMd.SrcPort,
-		"dst-port" : pktMd.DstPort,
+		"protocol": pktMd.Protocol,
+		"src-addr": pktMd.SrcAddr.String(),
+		"dst-addr": pktMd.DstAddr.String(),
+		"src-port": pktMd.SrcPort,
+		"dst-port": pktMd.DstPort,
 	}
 
 	log.WithFields(packetLog).Trace("Applying INT watchlist for packet.")
@@ -120,13 +120,13 @@ func (rh *ReportHandler) applyWatchlist(pktMd *dataplane.PacketMetadata) bool {
 		if pktMd.Protocol == rule.GetProtocol() &&
 			rule.GetSrcAddr().Contains(pktMd.SrcAddr) &&
 			rule.GetDstAddr().Contains(pktMd.DstAddr) {
-				log.WithFields(log.Fields{
-					"packet": packetLog,
-					"rule-matched": rule.String(),
-				}).Debug("Match for post-NAT tuple found")
-				pktMd.MatchedPostNAT = true
-				return true
-			}
+			log.WithFields(log.Fields{
+				"packet":       packetLog,
+				"rule-matched": rule.String(),
+			}).Debug("Match for post-NAT tuple found")
+			pktMd.MatchedPostNAT = true
+			return true
+		}
 	}
 
 	// apply for pre-NAT 5-tuple
@@ -135,7 +135,7 @@ func (rh *ReportHandler) applyWatchlist(pktMd *dataplane.PacketMetadata) bool {
 			rule.GetSrcAddr().Contains(pktMd.DataPlaneReport.PreNATSourceIP) &&
 			rule.GetDstAddr().Contains(pktMd.DataPlaneReport.PreNATDestinationIP) {
 			log.WithFields(log.Fields{
-				"packet": packetLog,
+				"packet":       packetLog,
 				"rule-matched": rule.String(),
 			}).Debug("Match for pre-NAT tuple found")
 			return true
@@ -156,17 +156,17 @@ func (rh *ReportHandler) rxFn(id int) {
 		}
 
 		fields := log.WithFields(log.Fields{
-			"DataPlaneReport": pktMd.DataPlaneReport,
-			"SrcAddr":         pktMd.SrcAddr,
-			"DstAddr":         pktMd.DstAddr,
-			"IPProtocol":      pktMd.Protocol,
-			"SrcPort":         pktMd.SrcPort,
-			"DstPort":         pktMd.DstPort,
-			"Encapsulation":   pktMd.EncapMode,
+			"DatapathReport": pktMd.DataPlaneReport,
+			"SrcAddr":        pktMd.SrcAddr,
+			"DstAddr":        pktMd.DstAddr,
+			"IPProtocol":     pktMd.Protocol,
+			"SrcPort":        pktMd.SrcPort,
+			"DstPort":        pktMd.DstPort,
+			"Encapsulation":  pktMd.EncapMode,
 		})
 		fields.Debugf("RX worker %d parsed data plane event.", id)
 
-		if seqNo >= math.MaxUint32 {
+		if seqNo == math.MaxUint32 {
 			seqNo = 0
 		} else {
 			seqNo++
