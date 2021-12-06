@@ -1,7 +1,7 @@
 # Copyright 2021-present Open Networking Foundation
 # SPDX-License-Identifier: Apache-2.0
 
-ansible==2.10.5
+ansible==4.2.0
 ansible-base==2.10.5
 cffi==1.14.4
 cryptography==3.3.2
