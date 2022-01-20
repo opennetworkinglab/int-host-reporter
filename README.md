@@ -139,7 +139,7 @@ represents the abstraction of connections between switch and subnet.
 ![The visualization of a sample DI topology](docs/static/images/di-topo.png?raw=true "The visualization of a sample DI topology")
 
 However, building the DI topology file manually is time-consuming and error-prone. Therefore, we have created the `./di gen-topology` script
-to automate this process. You can find the guide how to use this script in [the sdfabric-utils repository](https://github.com/opennetworkinglab/sdfabric-utils).
+to automate this process. You can find the guide how to use this script in [the sdfabric-utils repository](https://github.com/opennetworkinglab/sdfabric-utils) (member-only, please reach out to your ONF representative to get access).
 
 The `./di gen-topology` scipt leverages INT Host Reporter's `GET /api/v1/topology` API exposed on each
 K8s nodes to retrieve information about local links. 
